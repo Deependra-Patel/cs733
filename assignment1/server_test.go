@@ -16,10 +16,11 @@ func TestRead(t *testing.T) {
 	go serverMain()
 	time.Sleep(1 * time.Second) // one second is enough time for the server to start
 	name := "hi.txt"
+	name2 := "foo.txt"
 	contents := "bye"
 	contents2 := "second"
 	exptime := 300000
-	smallExptime := 5
+	smallExptime := 2
 	conn, err := net.Dial("tcp", "localhost:8080")
 	if err != nil {
 		t.Error(err.Error()) // report error through testing framework
@@ -27,7 +28,7 @@ func TestRead(t *testing.T) {
 
 	scanner := bufio.NewScanner(conn)
 
-	// Write a file
+	// Test write+read
 	fmt.Fprintf(conn, "write %v %v %v\r\n%v\r\n", name, len(contents), exptime, contents)
 	scanner.Scan() // read first line
 	resp := scanner.Text() // extract the text from the buffer
@@ -37,7 +38,6 @@ func TestRead(t *testing.T) {
 	if err != nil {
 		t.Error("Non-numeric version found")
 	}
-
 	fmt.Fprintf(conn, "read %v\r\n", name) // try a read now
 	scanner.Scan()
 
@@ -48,7 +48,7 @@ func TestRead(t *testing.T) {
 	scanner.Scan()
 	expect(t, contents, scanner.Text())
 
-	//Testing CAS
+	//Testing CAS with expiry
 	fmt.Fprintf(conn, "cas %v %v %v %v\r\n%v\r\n", name, version, len(contents2), smallExptime, contents2)
 	scanner.Scan()
 	resp = scanner.Text()
@@ -58,11 +58,28 @@ func TestRead(t *testing.T) {
 	if err != nil{
 		t.Error("Non-numeric version found")
 	}
-	time.Sleep(time.Second*5)
+	time.Sleep(time.Second*2)
 	fmt.Fprintf(conn, "read %v\r\n", name) // try a read now
 	scanner.Scan()
 	arr = strings.Split(scanner.Text(), " ")
 	expect(t, arr[0], "ERR_FILE_NOT_FOUND")
+
+	//Testing delete
+	fmt.Fprintf(conn, "write %v %v\r\n%v\r\n", name2, len(contents2), contents2)
+	scanner.Scan()
+	resp = scanner.Text()
+	arr = strings.Split(resp, " ")
+	expect(t, arr[0], "OK")
+	version, err = strconv.ParseInt(arr[1], 10, 64)
+	if err != nil{
+		t.Error("Non-numeric version found")
+	}
+	fmt.Fprintf(conn, "delete %v\r\n", name2) // try a read now
+	scanner.Scan()
+	expect(t, scanner.Text(), "OK")
+	fmt.Fprintf(conn, "read %v\r\n", name2) // try a read now
+	scanner.Scan()
+	expect(t, scanner.Text(), "ERR_FILE_NOT_FOUND")
 }
 
 // Useful testing function

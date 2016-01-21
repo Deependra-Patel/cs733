@@ -66,6 +66,8 @@ func read(filename string) string{
 			return "ERR_FILE_NOT_FOUND\r\n"
 		}
 		buffer += strconv.Itoa(int((fileTimeMap[filename].Add(expiryMap[filename])).Sub(time.Now()).Seconds()))
+	} else {
+		buffer += "0"
 	}
 	buffer += "\r\n" + contentMap[filename] + "\r\n"
 	return buffer
