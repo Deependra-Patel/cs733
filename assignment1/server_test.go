@@ -97,6 +97,21 @@ func TestServer(t *testing.T) {
 	expect(t, arr[2], fmt.Sprintf("%v", len(contents3)))
 	scanner.Scan()
 	expect(t, scanner.Text(), contents3)
+
+	//Delete when file is expired should give ERR_FILE_NOT_FOUND
+	fmt.Fprintf(conn, "write %v %v %v\r\n%v\r\n", name, len(contents2), smallExptime, contents2)
+	scanner.Scan()
+	resp = scanner.Text()
+	arr = strings.Split(resp, " ")
+	expect(t, arr[0], "OK")
+	version, err = strconv.ParseInt(arr[1], 10, 64)
+	if err != nil{
+		t.Error("Non-numeric version found")
+	}
+	time.Sleep(time.Second*2) //waiting for file to expire
+	fmt.Fprintf(conn, "delete %v\r\n", name)
+	scanner.Scan()
+	expect(t, scanner.Text(), "ERR_FILE_NOT_FOUND")
 }
 
 // Useful testing function

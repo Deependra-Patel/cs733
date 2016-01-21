@@ -111,12 +111,17 @@ func deleteFile(filename string) string{
 	buffer := ""
 	lock.Lock()
 	if versionMap[filename] == 0{
-		buffer += "ERR_FILE_NOT_FOUND\r\n"
+		buffer = "ERR_FILE_NOT_FOUND\r\n"
 	} else {
+		if (fileTimeMap[filename].Add(expiryMap[filename])).Before(time.Now()){
+			//lazy delete
+			buffer = "ERR_FILE_NOT_FOUND\r\n"
+		} else {
+			buffer = "OK\r\n"
+		}
 		delete(versionMap, filename)
 		delete(contentMap, filename)
 		delete(expiryMap, filename)
-		buffer += "OK\r\n"
 	}
 	lock.Unlock()
 	return buffer
