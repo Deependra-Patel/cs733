@@ -16,11 +16,10 @@ func TestRead(t *testing.T) {
 	go serverMain()
 	time.Sleep(1 * time.Second) // one second is enough time for the server to start
 	name := "hi.txt"
-	name2 := "foo.txt"
 	contents := "bye"
 	contents2 := "second"
 	exptime := 300000
-	smallExptime := 2
+	smallExptime := 1
 	conn, err := net.Dial("tcp", "localhost:8080")
 	if err != nil {
 		t.Error(err.Error()) // report error through testing framework
@@ -46,7 +45,7 @@ func TestRead(t *testing.T) {
 	expect(t, arr[1], fmt.Sprintf("%v", version)) // expect only accepts strings, convert int version to string
 	expect(t, arr[2], fmt.Sprintf("%v", len(contents)))
 	scanner.Scan()
-	expect(t, contents, scanner.Text())
+	expect(t, scanner.Text(), contents)
 
 	//Testing CAS with expiry
 	fmt.Fprintf(conn, "cas %v %v %v %v\r\n%v\r\n", name, version, len(contents2), smallExptime, contents2)
@@ -58,14 +57,14 @@ func TestRead(t *testing.T) {
 	if err != nil{
 		t.Error("Non-numeric version found")
 	}
-	time.Sleep(time.Second*2)
+	time.Sleep(time.Second*3)
 	fmt.Fprintf(conn, "read %v\r\n", name) // try a read now
 	scanner.Scan()
 	arr = strings.Split(scanner.Text(), " ")
 	expect(t, arr[0], "ERR_FILE_NOT_FOUND")
 
 	//Testing delete
-	fmt.Fprintf(conn, "write %v %v\r\n%v\r\n", name2, len(contents2), contents2)
+	fmt.Fprintf(conn, "write %v %v\r\n%v\r\n", name, len(contents2), contents2)
 	scanner.Scan()
 	resp = scanner.Text()
 	arr = strings.Split(resp, " ")
@@ -74,10 +73,10 @@ func TestRead(t *testing.T) {
 	if err != nil{
 		t.Error("Non-numeric version found")
 	}
-	fmt.Fprintf(conn, "delete %v\r\n", name2) // try a read now
+	fmt.Fprintf(conn, "delete %v\r\n", name) // try a read now
 	scanner.Scan()
 	expect(t, scanner.Text(), "OK")
-	fmt.Fprintf(conn, "read %v\r\n", name2) // try a read now
+	fmt.Fprintf(conn, "read %v\r\n", name) // try a read now
 	scanner.Scan()
 	expect(t, scanner.Text(), "ERR_FILE_NOT_FOUND")
 }
