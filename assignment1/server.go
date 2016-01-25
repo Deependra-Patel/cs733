@@ -23,8 +23,12 @@ func write(filename string, numBytes int, seconds int, reader *bufio.Reader) str
 	//Case when user presses enters while entering file content
 	for total < numBytes {
 		curBytes, _, _ := reader.ReadLine()
-		total += len(curBytes)
+		total += len(curBytes) + 2
 		buffer += string(curBytes)
+		buffer += "\r\n"
+	}
+	if len(buffer)>=2 {
+		buffer = buffer[0:len(buffer) - 2]
 	}
 	if (len(buffer)!=numBytes){
 		return "ERR_CMD_ERR\r\n"
@@ -79,8 +83,15 @@ func cas(filename string, version int, numBytes int, seconds int, reader *bufio.
 	total := 0
 	for total < numBytes {
 		curBytes, _, _ := reader.ReadLine()
-		total += len(curBytes)
+		total += len(curBytes) + 2
 		buffer += string(curBytes)
+		buffer += "\r\n"
+	}
+	if len(buffer)>=2 {
+		buffer = buffer[0:len(buffer) - 2]
+	}
+	if (len(buffer)!=numBytes){
+		return "ERR_CMD_ERR\r\n"
 	}
 	lock.Lock()
 	defer lock.Unlock()

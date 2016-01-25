@@ -122,9 +122,10 @@ func TestDeleteAndExpiry(t *testing.T) {
 	scanner.Scan()
 	expect(t, scanner.Text(), "ERR_FILE_NOT_FOUND")
 }
+
 func TestFileContent(t *testing.T) {
 	name := "hi.txt"
-	contents3 := "xxcasabc write a 3\\adf cas delete hi.txt"
+	contents1 := "abc \r\n delete hi.txt \\ cas read"
 	conn, err := net.Dial("tcp", "localhost:8080")
 	if err != nil {
 		t.Error(err.Error()) // report error through testing framework
@@ -132,7 +133,7 @@ func TestFileContent(t *testing.T) {
 
 	scanner := bufio.NewScanner(conn)
 	//Testing with gibberish values in file content
-	fmt.Fprintf(conn, "write %v %v\r\n%v\r\n", name, len(contents3), contents3)
+	fmt.Fprintf(conn, "write %v %v\r\n%v\r\n", name, len(contents1), contents1)
 	scanner.Scan() // read first line
 	resp := scanner.Text() // extract the text from the buffer
 	arr := strings.Split(resp, " ") // split into OK and <version>
@@ -146,9 +147,11 @@ func TestFileContent(t *testing.T) {
 	arr = strings.Split(scanner.Text(), " ")
 	expect(t, arr[0], "CONTENTS")
 	expect(t, arr[1], fmt.Sprintf("%v", version))
-	expect(t, arr[2], fmt.Sprintf("%v", len(contents3)))
+	expect(t, arr[2], fmt.Sprintf("%v", len(contents1)))
 	scanner.Scan()
-	expect(t, scanner.Text(), contents3)
+	expect(t, scanner.Text(), "abc ")
+	scanner.Scan()
+	expect(t, scanner.Text(), " delete hi.txt \\ cas read")
 }
 
 func TestWriteConcurrency(t *testing.T) {
