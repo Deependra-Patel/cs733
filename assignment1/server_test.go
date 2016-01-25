@@ -151,6 +151,129 @@ func TestFileContent(t *testing.T) {
 	expect(t, scanner.Text(), contents3)
 }
 
+func TestWriteConcurrency(t *testing.T) {
+	name := "hi.txt"
+	n := 100
+	c := make(chan int64)
+	for i:=0; i<n; i++{
+		go writeFunc(name, strconv.Itoa(i), t, c)
+	}
+	for i:=0; i<n; i++{
+		<- c
+	}
+
+	conn, err := net.Dial("tcp", "localhost:8080")
+	if err != nil {
+		t.Error(err.Error()) // report error through testing framework
+	}
+	scanner := bufio.NewScanner(conn)
+	fmt.Fprintf(conn, "read %v\r\n", name) // try a read now
+	scanner.Scan()
+	arr := strings.Split(scanner.Text(), " ")
+	expect(t, arr[0], "CONTENTS")
+	_, err = strconv.ParseInt(arr[1], 10, 64) // parse version as number
+	if err != nil {
+		t.Error("Non-numeric version found")
+	}
+	scanner.Scan()
+	content, err := strconv.Atoi(scanner.Text())
+	if err!=nil{
+		t.Error("Non integral value in content")
+	}
+	if (content < 0 || content >= n){
+		t.Error("Content not found as given.")
+	}
+}
+
+func TestCASConcurrency(t *testing.T) {
+	name := "hi.txt"
+	contents := "initial content"
+	newcontent := "replace with this"
+	n := 100
+	c := make(chan string)
+
+	conn, err := net.Dial("tcp", "localhost:8080")
+	scanner := bufio.NewScanner(conn)
+	fmt.Fprintf(conn, "write %v %v\r\n%v\r\n", name, len(contents), contents)
+	scanner.Scan() // read first line
+	resp := scanner.Text() // extract the text from the buffer
+	arr := strings.Split(resp, " ") // split into OK and <version>
+	expect(t, arr[0], "OK")
+	version, err := strconv.ParseInt(arr[1], 10, 64) // parse version as number
+	if err != nil {
+		t.Error("Non-numeric version found")
+	}
+
+	for i:=0; i<n; i++{
+		go casFunc(name, version, t, c, newcontent)
+	}
+	countOK := 0
+	countERR := 0
+	for i:=0; i<n; i++{
+		response := <- c
+		if (response == "OK"){
+			countOK++
+		} else {
+			countERR++
+		}
+	}
+	if (countOK != 1 || (countOK + countERR)!=n){
+		t.Error("Error in cas with concurrency.")
+	}
+	//now reading value after cas
+	fmt.Fprintf(conn, "read %v\r\n", name) // try a read now
+	scanner.Scan()
+	arr = strings.Split(scanner.Text(), " ")
+	expect(t, arr[0], "CONTENTS")
+	_, err = strconv.ParseInt(arr[1], 10, 64) // parse version as number
+	if err != nil {
+		t.Error("Non-numeric version found")
+	}
+	expect(t, arr[2], fmt.Sprintf("%v", len(newcontent)))
+	scanner.Scan()
+	expect(t, scanner.Text(), newcontent)
+}
+
+func casFunc(name string, version int64, t *testing.T, c chan string, contents string){
+	conn, err := net.Dial("tcp", "localhost:8080")
+	if err != nil {
+		t.Error(err.Error()) // report error through testing framework
+	}
+	scanner := bufio.NewScanner(conn)
+	fmt.Fprintf(conn, "cas %v %v %v\r\n%v\r\n", name, version, len(contents), contents)
+	scanner.Scan() // read first line
+	resp := scanner.Text() // extract the text from the buffer
+	arr := strings.Split(resp, " ")
+	if len(arr) == 1 {
+		expect(t, arr[0], "ERR_VERSION")
+		c <- "ERR_VERSION";
+	} else if len(arr) == 2 {
+		expect(t, arr[0], "OK")
+		_, err := strconv.ParseInt(arr[1], 10, 64) // parse version as number
+		if err != nil {
+			t.Error("Non-numeric version found")
+		}
+		c <- "OK"
+	}
+}
+
+func writeFunc(name string, contents string, t *testing.T, c chan int64){
+	conn, err := net.Dial("tcp", "localhost:8080")
+	if err != nil {
+		t.Error(err.Error()) // report error through testing framework
+	}
+	scanner := bufio.NewScanner(conn)
+	fmt.Fprintf(conn, "write %v %v\r\n%v\r\n", name, len(contents), contents)
+	scanner.Scan() // read first line
+	resp := scanner.Text() // extract the text from the buffer
+	arr := strings.Split(resp, " ") // split into OK and <version>
+	expect(t, arr[0], "OK")
+	version, err := strconv.ParseInt(arr[1], 10, 64) // parse version as number
+	if err != nil {
+		t.Error("Non-numeric version found")
+	}
+	c <- version;
+}
 // Useful testing function
 func expect(t *testing.T, a string, b string) {
 	if a != b {
