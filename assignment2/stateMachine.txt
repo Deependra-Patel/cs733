@@ -1,0 +1,83 @@
+#################
+State : Follower
+on VoteReq(from, term, candidateId, lastLogIndex, lastLogTerm)
+	if sm.term <= msg.term &&
+		sm.votedFor == nil or msg.candidateId &&
+		candidate log is at least as up-to-date as receiver's log,
+			sm.term = msg.term
+			sm.votedFor = msg.candidateId
+			action = Send(msg.from, VoteResp(sm.term, voteGranted = yes))
+	Otherwise, reject vote:
+		action = Send(msg.from, VoteResp(sm.term, voteGranted = no))
+
+on VoteResp(term, voteGranted)
+	do nothing
+
+on Timeout()
+	sm.state = Candidate
+	sm.term ++
+	sm.voteCount = 1
+	for ids other than its own (otherId)
+		action = Send(otherId, VoteReq(sm.Id, sm.term, sm.lastLogIndex, sm.lastLogTerm))
+
+on AppendEntriesReq(term, leaderId, prevLogIndex, entries[], commitIndex)
+	
+
+on AppendEntriesResp(term, success)
+	do nothing
+
+#################
+State : Candidate
+on VoteReq(from, term, candidateId, lastLogIndex, lastLogTerm)
+	if sm.term <= msg.term		
+			sm.term = msg.term
+			sm.votedFor = msg.candidateId
+			action = Send(msg.from, VoteResp(sm.term, voteGranted = yes))
+	Otherwise, reject vote:
+		action = Send(msg.from, VoteResp(sm.term, voteGranted = no))
+
+on VoteResp(term, voteGranted)
+	if term == sm.term && voteGranted == yes
+		sm.voteCount++
+		if (sm.voteCount > (n+1)/2)
+			sm.state = Leader
+			for ids other than its own (otherId)
+					action = Send(otherId, AppendEntriesRequest(sm.term, sm.id, sm.lastLogIndex, sm.lastLogTerm, nil, sm.commitIndex)			
+on Timeout()
+	sm.term ++
+	sm.voteCount = 1
+	for ids other than its own (otherId)
+		action = Send(otherId, VoteReq(sm.Id, sm.term, sm.lastLogIndex, sm.lastLogTerm))
+
+on AppendEntriesReq(term, leaderId, prevLogIndex, entries[], commitIndex)
+	if term>sm.term
+		sm.state = follower
+
+on AppendEntriesResp(term, success)
+	do nothing
+
+#################
+State : Leader
+on VoteReq(from, term, candidateId, lastLogIndex, lastLogTerm)
+	if sm.term == msg.term + 1 :	
+		action = Send(msg.from, AppendEntriesRequest(sm.term, sm.id, sm.lastLogIndex, sm.lastLogTerm, nil, sm.commitIndex)			
+	Otherwise, reject vote:
+		sm.term = msg.term
+		sm.votedFor = msg.candidateId
+		sm.state = Follower
+		action = Send(msg.from, VoteResp(sm.term, voteGranted = yes))
+
+on VoteResp(term, voteGranted)
+	do nothing
+
+on Timeout()
+	for ids other than its own (otherId)
+		action = Send(msg.from, AppendEntriesRequest(sm.term, sm.id, sm.lastLogIndex, sm.lastLogTerm, nil, sm.commitIndex)
+
+on AppendEntriesReq(term, leaderId, prevLogIndex, entries[], commitIndex)
+	if term <= sm.term
+		do nothing
+	else 
+		sm.state = follower
+
+on AppendEntriesResp(term, success)
