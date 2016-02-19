@@ -1,6 +1,9 @@
 Deependra Patel
 120050032
 State machine design
+Google doc link (better indented) :
+https://docs.google.com/document/d/11B64mMgDwucx1AXKzf_QvQV5poGkPoUv0GQhUMk1X4o/edit
+
 Earlier committed on 
 https://github.com/Deependra-Patel/cs733/blob/master/assignment2/stateMachine.txt
 
@@ -23,12 +26,13 @@ on VoteResp(term, voteGranted)
 
 on Timeout()
 	sm.state = Candidate
-Alarm(t)
+	action = Alarm(t)
 	sm.term += 1
-action = StateStore(votedFor = sm.id, currentTerm = sm.term)
+	action = StateStore(votedFor = sm.id, currentTerm = sm.term)
 	sm.voteCount = 1
+	sm.votedFor = sm.id
 	for peer in peers
-	action = Send(otherId, VoteReq(sm.Id, sm.term, sm.lastLogIndex, sm.lastLogTerm))
+	action = Send(peer, VoteReq(sm.Id, sm.term, sm.lastLogIndex, sm.lastLogTerm))
 
 on AppendEntriesReq(term, leaderId, prevLogIndex, prevLogTerm, entries[], leaderCommit)
 	if term<sm.term 
@@ -39,10 +43,10 @@ on AppendEntriesReq(term, leaderId, prevLogIndex, prevLogTerm, entries[], leader
 		if log[prevLogIndex]!=nil && prevLogTerm = log[prevLogIndex].term
 log[lastindex + 1 onwards] = entries
 			persistent store data on log (i = 0:len(entries)-1)
-action = LogStore(lastindex+i+1, entries[i].data)
-LogStore()
-if leaderCommit > commitIndex 
-	commitIndex = min(leaderCommit, lastLogEntry)
+		action = LogStore(lastindex+i+1, entries[i].data)
+		LogStore()
+		if leaderCommit > commitIndex 
+			commitIndex = min(leaderCommit, lastLogEntry)
 
 Otherwise,
 action = Send(msg.from, AppendEntriesRes(sm.term, success = false)) 
@@ -85,7 +89,7 @@ matchIndex[peer] = 0
 on Timeout()
 	sm.term += 1
 	sm.voteCount = 1
-Alarm(t)
+action = Alarm(t)
 action = StateStore(term = sm.term, votedFor = sm.id)
 	for peer in peers
 		action = Send(peer, VoteReq(sm.id, sm.term, sm.lastLogIndex, sm.lastLogTerm))
