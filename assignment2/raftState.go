@@ -5,6 +5,7 @@ import (
 )
 
 var timeoutTime int = 10
+var DEBUG = false
 
 func (commit *Commit) print() {
 	fmt.Printf("Commit %+v\n", *commit)
@@ -39,7 +40,7 @@ func (send *Send) print() {
 	fmt.Println("}")
 }
 
-func printOutputActions(outputActions []interface{}){
+func printOutputActions(outputActions []interface{}) {
 	fmt.Println("No. of output actions ", len(outputActions))
 	for _, element := range outputActions {
 		switch element.(type) {
@@ -68,9 +69,9 @@ func (sm *StateMachine) voteReq(voteReq VoteReqEv) []interface{} {
 	switch sm.state {
 	case "Follower":
 		if sm.term <= voteReq.term &&
-		(sm.votedFor == 0 || sm.votedFor == voteReq.candidateId) &&
-		(voteReq.term > sm.log[len(sm.log)-1].term ||
-		((voteReq.term == sm.log[len(sm.log)-1].term) && voteReq.lastLogIndex >= (len(sm.log)-1))) {
+			(sm.votedFor == 0 || sm.votedFor == voteReq.candidateId) &&
+			(voteReq.term > sm.log[len(sm.log)-1].term ||
+				((voteReq.term == sm.log[len(sm.log)-1].term) && voteReq.lastLogIndex >= (len(sm.log)-1))) {
 			sm.term = voteReq.term
 			sm.votedFor = voteReq.candidateId
 			resp = append(resp, StateStore{sm.term, sm.votedFor})
@@ -85,7 +86,7 @@ func (sm *StateMachine) voteReq(voteReq VoteReqEv) []interface{} {
 			sm.state = "Follower"
 			sm.term = voteReq.term
 			if voteReq.term > sm.log[len(sm.log)-1].term ||
-			((voteReq.term == sm.log[len(sm.log)-1].term) && voteReq.lastLogIndex >= (len(sm.log)-1)) {
+				((voteReq.term == sm.log[len(sm.log)-1].term) && voteReq.lastLogIndex >= (len(sm.log)-1)) {
 				sm.votedFor = voteReq.candidateId
 				resp = append(resp, StateStore{sm.term, sm.votedFor})
 				resp = append(resp, Send{voteReq.candidateId,
@@ -109,13 +110,15 @@ func (sm *StateMachine) voteReq(voteReq VoteReqEv) []interface{} {
 			sm.state = "Follower"
 			sm.term = voteReq.term
 			if voteReq.term > sm.log[len(sm.log)-1].term ||
-			((voteReq.term == sm.log[len(sm.log)-1].term) && voteReq.lastLogIndex >= (len(sm.log)-1)) {
+				((voteReq.term == sm.log[len(sm.log)-1].term) && voteReq.lastLogIndex >= (len(sm.log)-1)) {
 				sm.votedFor = voteReq.candidateId
 				resp = append(resp, StateStore{sm.term, sm.votedFor})
-				resp = append(resp, Send{voteReq.candidateId, VoteRespEv{term: sm.term, voteGranted: true, from: sm.id}})
+				resp = append(resp, Send{voteReq.candidateId, VoteRespEv{term: sm.term,
+					voteGranted: true, from: sm.id}})
 			} else { //reject
 				resp = append(resp, StateStore{sm.term, 0})
-				resp = append(resp, Send{voteReq.candidateId, VoteRespEv{term: sm.term, voteGranted: false, from: sm.id}})
+				resp = append(resp, Send{voteReq.candidateId, VoteRespEv{term: sm.term,
+					voteGranted: false, from: sm.id}})
 			}
 		}
 
@@ -135,7 +138,7 @@ func (sm *StateMachine) voteResp(voteResp VoteRespEv) []interface{} {
 			sm.voteCount++
 			if sm.voteCount >= (len(sm.peers)+3)/2 {
 				sm.state = "Leader"
-				resp = append(resp, Alarm{t:timeoutTime})
+				resp = append(resp, Alarm{t: timeoutTime})
 				resp = append(resp, getHeartBeatEvents(sm)...)
 				for _, peer := range sm.peers {
 					sm.nextIndex[peer] = len(sm.log)
@@ -163,7 +166,7 @@ func (sm *StateMachine) timeout() []interface{} {
 		resp = append(resp, Alarm{timeoutTime})
 		for _, peer := range sm.peers {
 			resp = append(resp, Send{peer, VoteReqEv{term: sm.term, candidateId: sm.id,
-				lastLogIndex: len(sm.log)-1, lastLogTerm: sm.log[len(sm.log)-1].term}})
+				lastLogIndex: len(sm.log) - 1, lastLogTerm: sm.log[len(sm.log)-1].term}})
 		}
 	case "Candidate":
 		sm.term++
@@ -173,7 +176,7 @@ func (sm *StateMachine) timeout() []interface{} {
 		resp = append(resp, Alarm{timeoutTime})
 		for _, peer := range sm.peers {
 			resp = append(resp, Send{peer, VoteReqEv{term: sm.term, candidateId: sm.id,
-				lastLogIndex: len(sm.log)-1, lastLogTerm: sm.log[len(sm.log)-1].term}})
+				lastLogIndex: len(sm.log) - 1, lastLogTerm: sm.log[len(sm.log)-1].term}})
 		}
 	case "Leader":
 		resp = append(resp, Alarm{timeoutTime})
@@ -192,16 +195,17 @@ func (sm *StateMachine) appendEntriesReq(appendEntries AppendEntriesReqEv) []int
 		} else {
 			if appendEntries.term > sm.term {
 				sm.term = appendEntries.term
-				resp = append(resp, StateStore{currentTerm:sm.term, votedFor:0})
+				resp = append(resp, StateStore{currentTerm: sm.term, votedFor: 0})
 			}
 			resp = append(resp, Alarm{t: timeoutTime})
 			if len(sm.log) > appendEntries.prevLogIndex &&
-			sm.log[appendEntries.prevLogIndex].term == appendEntries.prevLogTerm {
+				sm.log[appendEntries.prevLogIndex].term == appendEntries.prevLogTerm {
 				sm.log = append(sm.log[:appendEntries.prevLogIndex+1], appendEntries.entries...)
 				index := appendEntries.prevLogIndex + 1
 				i := 0
 				for i < len(appendEntries.entries) {
-					resp = append(resp, LogStore{index: index + i, term:sm.term, data: appendEntries.entries[i].data})
+					resp = append(resp, LogStore{index: index + i, term: sm.term,
+						data: appendEntries.entries[i].data})
 					i += 1
 				}
 				resp = append(resp, Send{appendEntries.leaderId,
@@ -224,7 +228,7 @@ func (sm *StateMachine) appendEntriesReq(appendEntries AppendEntriesReqEv) []int
 			resp = append(resp, StateStore{currentTerm: sm.term, votedFor: 0})
 			resp = append(resp, Alarm{t: timeoutTime})
 			if len(sm.log) > appendEntries.prevLogIndex &&
-			sm.log[appendEntries.prevLogIndex].term == appendEntries.prevLogTerm {
+				sm.log[appendEntries.prevLogIndex].term == appendEntries.prevLogTerm {
 				sm.log = append(sm.log[:appendEntries.prevLogIndex+1], appendEntries.entries...)
 				index := appendEntries.prevLogIndex + 1
 				i := 0
@@ -260,7 +264,7 @@ func (sm *StateMachine) appendEntriesResp(appendEntriesResp AppendEntriesRespEv)
 				sm.matchIndex[appendEntriesResp.from] = newIndex
 				sm.nextIndex[appendEntriesResp.from]++
 				count := 1
-				for _,peer := range sm.peers {
+				for _, peer := range sm.peers {
 					if sm.matchIndex[peer] >= newIndex {
 						count++
 					}
@@ -293,13 +297,14 @@ func (sm *StateMachine) append(appendEv AppendEv) []interface{} {
 	var resp []interface{}
 	switch sm.state {
 	case "Follower", "Candidate":
-		resp = append(resp, Commit{index:-1, data:appendEv.data, err:"ERR_NOT_LEADER"})
+		resp = append(resp, Commit{index: -1, data: appendEv.data, err: "ERR_NOT_LEADER"})
 	case "Leader":
-		sm.log = append(sm.log, logEntry{term:sm.term, data:appendEv.data})
-		resp = append(resp, LogStore{index:len(sm.log)-1, data:appendEv.data, term:sm.term})
-		for _, peer := range sm.peers{
+		sm.log = append(sm.log, logEntry{term: sm.term, data: appendEv.data})
+		resp = append(resp, LogStore{index: len(sm.log) - 1, data: appendEv.data, term: sm.term})
+		for _, peer := range sm.peers {
 			resp = append(resp, Send{peer,
-				AppendEntriesReqEv{sm.term, sm.id, sm.nextIndex[peer]-1, sm.log[sm.nextIndex[peer]-1].term,
+				AppendEntriesReqEv{sm.term, sm.id, sm.nextIndex[peer] - 1,
+					sm.log[sm.nextIndex[peer]-1].term,
 					sm.log[sm.nextIndex[peer]:], sm.commitIndex}})
 		}
 	}
@@ -312,10 +317,10 @@ func getHeartBeatEvents(sm *StateMachine) []interface{} {
 		if sm.nextIndex[peer] == len(sm.log) {
 			resp = append(resp, Send{peer, AppendEntriesReqEv{
 				sm.term, sm.id, len(sm.log) - 1,
-				sm.log[len(sm.log) - 1].term, nil, sm.commitIndex}})
+				sm.log[len(sm.log)-1].term, nil, sm.commitIndex}})
 		} else {
 			resp = append(resp, Send{peer, AppendEntriesReqEv{
-				sm.term, sm.id, sm.nextIndex[peer]-1,
+				sm.term, sm.id, sm.nextIndex[peer] - 1,
 				sm.log[sm.nextIndex[peer]-1].term, sm.log[sm.nextIndex[peer]:], sm.commitIndex}})
 		}
 	}
@@ -330,8 +335,7 @@ func min(a int, b int) int {
 	}
 }
 
-
-func (sm *StateMachine) ProcessEvent(ev interface{}) []interface{}{
+func (sm *StateMachine) ProcessEvent(ev interface{}) []interface{} {
 	var outputActions []interface{}
 	switch ev.(type) {
 	case AppendEv:
@@ -354,26 +358,28 @@ func (sm *StateMachine) ProcessEvent(ev interface{}) []interface{}{
 	default:
 		println("Unrecognized")
 	}
-	//printOutputActions(outputActions)
+	if DEBUG {
+		printOutputActions(outputActions)
+	}
 	return outputActions
 }
 
 func (sm *StateMachine) eventLoop() {
 	for {
 		select {
-		case appendMsg := <- sm.clientCh:
+		case appendMsg := <-sm.clientCh:
 			responses := sm.ProcessEvent(appendMsg)
-			for _,response := range responses{
+			for _, response := range responses {
 				sm.actionCh <- response
 			}
-		case peerMsg := <- sm.netCh:
+		case peerMsg := <-sm.netCh:
 			responses := sm.ProcessEvent(peerMsg)
-			for _,response := range responses{
+			for _, response := range responses {
 				sm.actionCh <- response
 			}
-		case <- sm.timeoutCh :
+		case <-sm.timeoutCh:
 			responses := sm.ProcessEvent(TimeoutEv{})
-			for _,response := range responses{
+			for _, response := range responses {
 				sm.actionCh <- response
 			}
 		}

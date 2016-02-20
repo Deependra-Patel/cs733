@@ -1,4 +1,5 @@
 package assignment2
+
 type AppendEv struct {
 	data []byte
 }
@@ -54,10 +55,10 @@ type StateMachine struct {
 	commitIndex int
 	nextIndex   map[int]int
 	matchIndex  map[int]int
-	actionCh chan interface{}
-	netCh chan interface{}
-	timeoutCh chan interface{}
-	clientCh chan interface{}
+	actionCh    chan interface{}
+	netCh       chan interface{}
+	timeoutCh   chan interface{}
+	clientCh    chan interface{}
 }
 
 type Commit struct {
@@ -78,7 +79,6 @@ type StateStore struct {
 
 type LogStore struct {
 	index int
-	term int
+	term  int
 	data  []byte
 }
-
