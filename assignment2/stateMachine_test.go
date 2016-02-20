@@ -88,11 +88,90 @@ func TestTimeout(t *testing.T){
 	expect(t, errorMessage, response, Alarm{t:timeoutTime});
 	for _, peer := range sm.peers {
 		response = <-sm.actionCh
-		expect(t, errorMessage, response, Send{peer, AppendEntriesReqEv{
-			term:initialSm.term, leaderId:initialSm.id, prevLogIndex:len(initialSm.log)-1,
-			prevLogTerm:initialSm.log[len(initialSm.log)-1].term, entries:nil,
-			leaderCommit:initialSm.commitIndex}});
+		if len(initialSm.log) != initialSm.nextIndex[peer] {
+			expect(t, errorMessage, response, Send{peer, AppendEntriesReqEv{
+				term:initialSm.term, leaderId:initialSm.id, prevLogIndex:initialSm.nextIndex[peer] - 1,
+				prevLogTerm:initialSm.log[initialSm.nextIndex[peer] - 1].term, entries:initialSm.log[initialSm.nextIndex[peer]:],
+				leaderCommit:initialSm.commitIndex}});
+		} else {
+			expect(t, errorMessage, response, Send{peer, AppendEntriesReqEv{
+				term:initialSm.term, leaderId:initialSm.id, prevLogIndex:len(initialSm.log)-1,
+				prevLogTerm:initialSm.log[len(initialSm.log)-1].term, entries:nil,
+				leaderCommit:initialSm.commitIndex}});
+		}
 	}
+	checkEmptyChannel(t, errorMessage, sm)
+}
+
+func TestAppendEntriesReq (t *testing.T) {
+	//with term lower than its
+	sm := getSampleSM("Follower")
+	initialSm := getSampleSM("Follower")
+	sm.netCh <- AppendEntriesReqEv{leaderId:initialSm.peers[0], term:initialSm.term-1}
+	errorMessage := "TestAppendEntriesReqFollower"
+	expectedActions := []interface{}{
+		Send{peerId:initialSm.peers[0],
+			event:AppendEntriesRespEv{from:initialSm.id, term:initialSm.term, success:false}}}
+	expectActions(t, errorMessage, sm, expectedActions)
+	//check for higher term
+	logEntries := []logEntry{logEntry{term:initialSm.term+2, data:[]byte("abd")},
+		logEntry{term:initialSm.term+2, data:[]byte("bcd")}}
+	sm.netCh <- AppendEntriesReqEv{term:initialSm.term+2, leaderId:initialSm.peers[0],
+		prevLogIndex:4, prevLogTerm:3, entries:logEntries, leaderCommit:6}
+	expectedActions = []interface{}{
+		StateStore{currentTerm:initialSm.term+2, votedFor:0},
+		Alarm{t:timeoutTime},
+		Send{peerId:initialSm.peers[0],
+			event:AppendEntriesRespEv{from:initialSm.id, term:initialSm.term+2, success:false}}}
+	expectActions(t, errorMessage, sm, expectedActions)
+	sm.netCh <- AppendEntriesReqEv{term:initialSm.term+2, leaderId:initialSm.peers[0],
+		prevLogIndex:3, prevLogTerm:2, entries:logEntries, leaderCommit:4}
+	expectedActions = []interface{}{
+		Alarm{t:10},
+		LogStore{index:4, term:initialSm.term+2, data:[]byte("abd")},
+		LogStore{index:5, term:initialSm.term+2, data:[]byte("bcd")},
+		Send{peerId:initialSm.peers[0],
+			event:AppendEntriesRespEv{from:initialSm.id, term:initialSm.term+2, success:true}}}
+	expectActions(t, errorMessage, sm, expectedActions)
+
+	sm = getSampleSM("Candidate")
+	initialSm = getSampleSM("Candidate")
+	sm.netCh <- AppendEntriesReqEv{leaderId:initialSm.peers[0], term:initialSm.term-1}
+	errorMessage = "TestAppendEntriesReqCandidate"
+	expectedActions = []interface{}{
+		Send{peerId:initialSm.peers[0],
+			event:AppendEntriesRespEv{from:initialSm.id, term:initialSm.term, success:false}}}
+	expectActions(t, errorMessage, sm, expectedActions)
+
+	sm.netCh <- AppendEntriesReqEv{term:initialSm.term+1, leaderId:initialSm.peers[0],
+		prevLogIndex:3, prevLogTerm:2, entries:logEntries, leaderCommit:4}
+	expectedActions = []interface{}{
+		StateStore{currentTerm:initialSm.term+1, votedFor:0},
+		Alarm{t:timeoutTime},
+		LogStore{index:4, term:initialSm.term+1, data:[]byte("abd")},
+		LogStore{index:5, term:initialSm.term+1, data:[]byte("bcd")},
+		Send{peerId:initialSm.peers[0],
+			event:AppendEntriesRespEv{from:initialSm.id, term:initialSm.term+1, success:true}}}
+
+
+	sm = getSampleSM("Leader")
+	initialSm = getSampleSM("Leader")
+	sm.netCh <- AppendEntriesReqEv{leaderId:initialSm.peers[0], term:initialSm.term-1}
+	errorMessage = "TestAppendEntriesReqLeader"
+	expectedActions = []interface{}{
+		Send{peerId:initialSm.peers[0],
+			event:AppendEntriesRespEv{from:initialSm.id, term:initialSm.term, success:false}}}
+	expectActions(t, errorMessage, sm, expectedActions)
+
+	sm.netCh <- AppendEntriesReqEv{term:initialSm.term+1, leaderId:initialSm.peers[0],
+		prevLogIndex:3, prevLogTerm:2, entries:logEntries, leaderCommit:4}
+	expectedActions = []interface{}{
+		StateStore{currentTerm:initialSm.term+1, votedFor:0},
+		Alarm{t:timeoutTime},
+		LogStore{index:4, term:initialSm.term+1, data:[]byte("abd")},
+		LogStore{index:5, term:initialSm.term+1, data:[]byte("bcd")},
+		Send{peerId:initialSm.peers[0],
+			event:AppendEntriesRespEv{from:initialSm.id, term:initialSm.term+1, success:true}}}
 	checkEmptyChannel(t, errorMessage, sm)
 }
 
@@ -108,14 +187,6 @@ func TestAppendEntriesResp (t *testing.T) {
 	checkEmptyChannel(t, errorMessage, sm)
 
 	sm = getSampleSM("Leader")
-	//initialSm := getSampleSM("Leader")
-	errorMessage = "TestAppendEntriesRespLeader"
-	// sm.netCh <- AppendEntriesRespEv{term:sm.term, from:4, success:true}
-	// expect(t, errorMessage, sm.commitIndex, 1)
-	// sm.netCh <- AppendEntriesRespEv{term:sm.term, from:5, success:true}
-	// sm.netCh <- AppendEntriesRespEv{term:sm.term, from:1, success:true}
-	// expect(t, errorMessage, sm.commitIndex, 2)
-	//checkEmptyChannel(t, errorMessage, sm)
 }
 
 func TestVoteResp (t *testing.T) {
@@ -138,10 +209,17 @@ func TestVoteResp (t *testing.T) {
 	expect(t, errorMessage, response, Alarm{t:timeoutTime})
 	for _, peer := range sm.peers {
 		response = <-sm.actionCh
-		expect(t, errorMessage, response, Send{peer, AppendEntriesReqEv{
-			term:initialSm.term, leaderId:initialSm.id, prevLogIndex:len(initialSm.log)-1,
-			prevLogTerm:initialSm.log[len(initialSm.log)-1].term, entries:nil,
-			leaderCommit:initialSm.commitIndex}});
+		if len(initialSm.log) != initialSm.nextIndex[peer] {
+			expect(t, errorMessage, response, Send{peer, AppendEntriesReqEv{
+				term:initialSm.term, leaderId:initialSm.id, prevLogIndex:initialSm.nextIndex[peer] - 1,
+				prevLogTerm:initialSm.log[initialSm.nextIndex[peer] - 1].term, entries:initialSm.log[initialSm.nextIndex[peer]:],
+				leaderCommit:initialSm.commitIndex}});
+		} else {
+			expect(t, errorMessage, response, Send{peer, AppendEntriesReqEv{
+				term:initialSm.term, leaderId:initialSm.id, prevLogIndex:len(initialSm.log)-1,
+				prevLogTerm:initialSm.log[len(initialSm.log)-1].term, entries:nil,
+				leaderCommit:initialSm.commitIndex}});
+		}
 	}
 	checkEmptyChannel(t, errorMessage, sm)
 
@@ -149,9 +227,6 @@ func TestVoteResp (t *testing.T) {
 	sm.netCh <- VoteRespEv{term:sm.term, voteGranted:true}
 	errorMessage = "TestVoteRespLeader"
 	checkEmptyChannel(t, errorMessage, sm)
-}
-func TestEventLoop (t *testing.T) {
-
 }
 
 func checkEmptyChannel(t *testing.T, errorMessage string, sm *StateMachine){
@@ -161,6 +236,13 @@ func checkEmptyChannel(t *testing.T, errorMessage string, sm *StateMachine){
 			t.Error(errorMessage+" Extra event written to channel.\n")
 		}
 	default:
+	}
+}
+
+func expectActions(t *testing.T, message string, sm *StateMachine, expectedActions []interface{}){
+	for _, expectedAction := range expectedActions{
+		response := <- sm.actionCh
+		expect(t, message, response, expectedAction)
 	}
 }
 

@@ -39,14 +39,38 @@ func (send *Send) print() {
 	fmt.Println("}")
 }
 
+func printOutputActions(outputActions []interface{}){
+	fmt.Println("No. of output actions ", len(outputActions))
+	for _, element := range outputActions {
+		switch element.(type) {
+		case Send:
+			ev := element.(Send)
+			ev.print()
+		case Commit:
+			ev := element.(Commit)
+			ev.print()
+		case Alarm:
+			ev := element.(Alarm)
+			ev.print()
+		case LogStore:
+			ev := element.(LogStore)
+			ev.print()
+		case StateStore:
+			ev := element.(StateStore)
+			ev.print()
+		}
+	}
+	fmt.Println()
+}
+
 func (sm *StateMachine) voteReq(voteReq VoteReqEv) []interface{} {
 	var resp []interface{}
 	switch sm.state {
 	case "Follower":
 		if sm.term <= voteReq.term &&
-			(sm.votedFor == 0 || sm.votedFor == voteReq.candidateId) &&
-			(voteReq.term > sm.log[len(sm.log)-1].term ||
-				((voteReq.term == sm.log[len(sm.log)-1].term) && voteReq.lastLogIndex >= (len(sm.log)-1))) {
+		(sm.votedFor == 0 || sm.votedFor == voteReq.candidateId) &&
+		(voteReq.term > sm.log[len(sm.log)-1].term ||
+		((voteReq.term == sm.log[len(sm.log)-1].term) && voteReq.lastLogIndex >= (len(sm.log)-1))) {
 			sm.term = voteReq.term
 			sm.votedFor = voteReq.candidateId
 			resp = append(resp, StateStore{sm.term, sm.votedFor})
@@ -61,7 +85,7 @@ func (sm *StateMachine) voteReq(voteReq VoteReqEv) []interface{} {
 			sm.state = "Follower"
 			sm.term = voteReq.term
 			if voteReq.term > sm.log[len(sm.log)-1].term ||
-				((voteReq.term == sm.log[len(sm.log)-1].term) && voteReq.lastLogIndex >= (len(sm.log)-1)) {
+			((voteReq.term == sm.log[len(sm.log)-1].term) && voteReq.lastLogIndex >= (len(sm.log)-1)) {
 				sm.votedFor = voteReq.candidateId
 				resp = append(resp, StateStore{sm.term, sm.votedFor})
 				resp = append(resp, Send{voteReq.candidateId,
@@ -85,7 +109,7 @@ func (sm *StateMachine) voteReq(voteReq VoteReqEv) []interface{} {
 			sm.state = "Follower"
 			sm.term = voteReq.term
 			if voteReq.term > sm.log[len(sm.log)-1].term ||
-				((voteReq.term == sm.log[len(sm.log)-1].term) && voteReq.lastLogIndex >= (len(sm.log)-1)) {
+			((voteReq.term == sm.log[len(sm.log)-1].term) && voteReq.lastLogIndex >= (len(sm.log)-1)) {
 				sm.votedFor = voteReq.candidateId
 				resp = append(resp, StateStore{sm.term, sm.votedFor})
 				resp = append(resp, Send{voteReq.candidateId, VoteRespEv{term: sm.term, voteGranted: true, from: sm.id}})
@@ -164,38 +188,43 @@ func (sm *StateMachine) appendEntriesReq(appendEntries AppendEntriesReqEv) []int
 	case "Follower":
 		if appendEntries.term < sm.term {
 			resp = append(resp, Send{appendEntries.leaderId,
-				AppendEntriesRespEv{term: sm.term, success: false}})
+				AppendEntriesRespEv{from: sm.id, term: sm.term, success: false}})
 		} else {
-			sm.term = appendEntries.term
-			resp = append(resp, StateStore{currentTerm:sm.term, votedFor:0})
+			if appendEntries.term > sm.term {
+				sm.term = appendEntries.term
+				resp = append(resp, StateStore{currentTerm:sm.term, votedFor:0})
+			}
 			resp = append(resp, Alarm{t: timeoutTime})
 			if len(sm.log) > appendEntries.prevLogIndex &&
-				sm.log[appendEntries.prevLogIndex].term == appendEntries.prevLogTerm {
+			sm.log[appendEntries.prevLogIndex].term == appendEntries.prevLogTerm {
 				sm.log = append(sm.log[:appendEntries.prevLogIndex+1], appendEntries.entries...)
 				index := appendEntries.prevLogIndex + 1
 				i := 0
 				for i < len(appendEntries.entries) {
-					resp = append(resp, LogStore{index: index + i, data: appendEntries.entries[i].data})
+					resp = append(resp, LogStore{index: index + i, term:sm.term, data: appendEntries.entries[i].data})
+					i += 1
 				}
+				resp = append(resp, Send{appendEntries.leaderId,
+					AppendEntriesRespEv{from: sm.id, term: sm.term, success: true}})
 				if appendEntries.leaderCommit > sm.commitIndex {
 					sm.commitIndex = min(appendEntries.leaderCommit, len(sm.log)-1)
 				}
 			} else {
 				resp = append(resp, Send{appendEntries.leaderId,
-					AppendEntriesRespEv{term: sm.term, success: false}})
+					AppendEntriesRespEv{from: sm.id, term: sm.term, success: false}})
 			}
 		}
 	case "Candidate", "Leader":
 		if appendEntries.term < sm.term {
 			resp = append(resp, Send{appendEntries.leaderId,
-				AppendEntriesRespEv{term: sm.term, success: false}})
+				AppendEntriesRespEv{from: sm.id, term: sm.term, success: false}})
 		} else {
 			sm.state = "Follower"
 			sm.term = appendEntries.term
 			resp = append(resp, StateStore{currentTerm: sm.term, votedFor: 0})
 			resp = append(resp, Alarm{t: timeoutTime})
 			if len(sm.log) > appendEntries.prevLogIndex &&
-				sm.log[appendEntries.prevLogIndex].term == appendEntries.prevLogTerm {
+			sm.log[appendEntries.prevLogIndex].term == appendEntries.prevLogTerm {
 				sm.log = append(sm.log[:appendEntries.prevLogIndex+1], appendEntries.entries...)
 				index := appendEntries.prevLogIndex + 1
 				i := 0
@@ -203,12 +232,14 @@ func (sm *StateMachine) appendEntriesReq(appendEntries AppendEntriesReqEv) []int
 					resp = append(resp,
 						LogStore{index: index + i, data: appendEntries.entries[i].data})
 				}
+				resp = append(resp, Send{appendEntries.leaderId,
+					AppendEntriesRespEv{from: sm.id, term: sm.term, success: true}})
 				if appendEntries.leaderCommit > sm.commitIndex {
 					sm.commitIndex = min(appendEntries.leaderCommit, len(sm.log)-1)
 				}
 			} else {
 				resp = append(resp, Send{appendEntries.leaderId,
-					AppendEntriesRespEv{term: sm.term, success: false}})
+					AppendEntriesRespEv{from: sm.id, term: sm.term, success: false}})
 			}
 		}
 	}
@@ -238,6 +269,7 @@ func (sm *StateMachine) appendEntriesResp(appendEntriesResp AppendEntriesRespEv)
 					index := sm.commitIndex
 					for index <= newIndex {
 						resp = append(resp, Commit{index: index, data: sm.log[index].data, err: ""})
+						index += 1
 					}
 					sm.commitIndex = newIndex
 				}
@@ -277,8 +309,15 @@ func (sm *StateMachine) append(appendEv AppendEv) []interface{} {
 func getHeartBeatEvents(sm *StateMachine) []interface{} {
 	var resp []interface{}
 	for _, peer := range sm.peers {
-		resp = append(resp, Send{peer, AppendEntriesReqEv{
-			sm.term, sm.id, len(sm.log) - 1, sm.log[len(sm.log)-1].term, nil, sm.commitIndex}})
+		if sm.nextIndex[peer] == len(sm.log) {
+			resp = append(resp, Send{peer, AppendEntriesReqEv{
+				sm.term, sm.id, len(sm.log) - 1,
+				sm.log[len(sm.log) - 1].term, nil, sm.commitIndex}})
+		} else {
+			resp = append(resp, Send{peer, AppendEntriesReqEv{
+				sm.term, sm.id, sm.nextIndex[peer]-1,
+				sm.log[sm.nextIndex[peer]-1].term, sm.log[sm.nextIndex[peer]:], sm.commitIndex}})
+		}
 	}
 	return resp
 }
@@ -315,26 +354,7 @@ func (sm *StateMachine) ProcessEvent(ev interface{}) []interface{}{
 	default:
 		println("Unrecognized")
 	}
-	// fmt.Println("No. of output actions ", len(outputActions))
-	// for _, element := range outputActions {
-	// 	switch element.(type) {
-	// 	case Send:
-	// 		ev := element.(Send)
-	// 		ev.print()
-	// 	case Commit:
-	// 		ev := element.(Commit)
-	// 		ev.print()
-	// 	case Alarm:
-	// 		ev := element.(Alarm)
-	// 		ev.print()
-	// 	case LogStore:
-	// 		ev := element.(LogStore)
-	// 		ev.print()
-	// 	case StateStore:
-	// 		ev := element.(StateStore)
-	// 		ev.print()
-	// 	}
-	// }
+	//printOutputActions(outputActions)
 	return outputActions
 }
 
