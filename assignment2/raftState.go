@@ -46,7 +46,7 @@ func (sm *StateMachine) voteReq(voteReq VoteReqEv) []interface{} {
 		if sm.term <= voteReq.term &&
 			(sm.votedFor == 0 || sm.votedFor == voteReq.candidateId) &&
 			(voteReq.term > sm.log[len(sm.log)-1].term ||
-				((voteReq.term == sm.log[len(sm.log)-1].term) && voteReq.lastLogIndex >= len(sm.log))) {
+				((voteReq.term == sm.log[len(sm.log)-1].term) && voteReq.lastLogIndex >= (len(sm.log)-1))) {
 			sm.term = voteReq.term
 			sm.votedFor = voteReq.candidateId
 			resp = append(resp, StateStore{sm.term, sm.votedFor})
@@ -61,7 +61,7 @@ func (sm *StateMachine) voteReq(voteReq VoteReqEv) []interface{} {
 			sm.state = "Follower"
 			sm.term = voteReq.term
 			if voteReq.term > sm.log[len(sm.log)-1].term ||
-				((voteReq.term == sm.log[len(sm.log)-1].term) && voteReq.lastLogIndex >= len(sm.log)) {
+				((voteReq.term == sm.log[len(sm.log)-1].term) && voteReq.lastLogIndex >= (len(sm.log)-1)) {
 				sm.votedFor = voteReq.candidateId
 				resp = append(resp, StateStore{sm.term, sm.votedFor})
 				resp = append(resp, Send{voteReq.candidateId,
@@ -85,7 +85,7 @@ func (sm *StateMachine) voteReq(voteReq VoteReqEv) []interface{} {
 			sm.state = "Follower"
 			sm.term = voteReq.term
 			if voteReq.term > sm.log[len(sm.log)-1].term ||
-				((voteReq.term == sm.log[len(sm.log)-1].term) && voteReq.lastLogIndex >= len(sm.log)) {
+				((voteReq.term == sm.log[len(sm.log)-1].term) && voteReq.lastLogIndex >= (len(sm.log)-1)) {
 				sm.votedFor = voteReq.candidateId
 				resp = append(resp, StateStore{sm.term, sm.votedFor})
 				resp = append(resp, Send{voteReq.candidateId, VoteRespEv{term: sm.term, voteGranted: true, from: sm.id}})
@@ -103,19 +103,26 @@ func (sm *StateMachine) voteResp(voteResp VoteRespEv) []interface{} {
 	var resp []interface{}
 	switch sm.state {
 	case "Follower":
+		if sm.term <= voteResp.term {
+			println("ERROR: Inconsistent Input")
+		}
 	case "Candidate":
 		if voteResp.term == sm.term && voteResp.voteGranted {
 			sm.voteCount++
 			if sm.voteCount >= (len(sm.peers)+3)/2 {
 				sm.state = "Leader"
+				resp = append(resp, Alarm{t:timeoutTime})
 				resp = append(resp, getHeartBeatEvents(sm)...)
 				for _, peer := range sm.peers {
-					sm.nextIndex[peer] = len(sm.log) + 1
+					sm.nextIndex[peer] = len(sm.log)
 					sm.matchIndex[peer] = 0
 				}
 			}
 		}
 	case "Leader":
+		if sm.term < voteResp.term {
+			println("ERROR: Inconsistent Input")
+		}
 	}
 	return resp
 }
@@ -211,6 +218,9 @@ func (sm *StateMachine) appendEntriesResp(appendEntriesResp AppendEntriesRespEv)
 	var resp []interface{}
 	switch sm.state {
 	case "Follower", "Candidate":
+		if sm.term <= appendEntriesResp.term {
+			println("ERROR: Inconsistent Input")
+		}
 	case "Leader":
 		if sm.term == appendEntriesResp.term {
 			if appendEntriesResp.success {

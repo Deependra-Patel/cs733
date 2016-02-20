@@ -11,11 +11,15 @@ func TestAppend (t *testing.T){
 	sm.clientCh <- AppendEv{data:data}
 	response := <- sm.actionCh
 	expect(t, errorMessage, response, Commit{index:-1, data:data, err:"ERR_NOT_LEADER"})
+	checkEmptyChannel(t, errorMessage, sm)
+
 	sm = getSampleSM("Candidate")
 	errorMessage = "TestAppendCandidate"
 	sm.clientCh <- AppendEv{data:data}
 	response = <- sm.actionCh
 	expect(t, errorMessage, response, Commit{index:-1, data:data, err:"ERR_NOT_LEADER"})
+	checkEmptyChannel(t, errorMessage, sm)
+
 	sm = getSampleSM("Leader")
 	initialSm := getSampleSM("Leader")
 	errorMessage = "TestAppendLeader"
@@ -30,6 +34,7 @@ func TestAppend (t *testing.T){
 				entries:append(getSampleLog()[initialSm.nextIndex[peer]:], logEntry{initialSm.term, data}),
 				leaderCommit:initialSm.commitIndex}})
 	}
+	checkEmptyChannel(t, errorMessage, sm)
 }
 
 func TestTimeout(t *testing.T){
@@ -51,6 +56,7 @@ func TestTimeout(t *testing.T){
 			term:initialSm.term+1, candidateId:initialSm.id, lastLogIndex:len(initialSm.log)-1,
 			lastLogTerm:initialSm.log[len(initialSm.log)-1].term}});
 	}
+	checkEmptyChannel(t, errorMessage, sm)
 
 	errorMessage = "TestTimeoutCandidate"
 	sm = getSampleSM("Candidate")
@@ -64,12 +70,13 @@ func TestTimeout(t *testing.T){
 	expect(t, errorMessage, response, StateStore{currentTerm:initialSm.term+1, votedFor:initialSm.id});
 	response = <- sm.actionCh
 	expect(t, errorMessage, response, Alarm{t:timeoutTime});
-	for _, peer := range sm.peers {
+	for _, peer := range initialSm.peers {
 		response = <-sm.actionCh
 		expect(t, errorMessage, response, Send{peer, VoteReqEv{
 			term:initialSm.term+1, candidateId:initialSm.id, lastLogIndex:len(initialSm.log)-1,
 			lastLogTerm:initialSm.log[len(initialSm.log)-1].term}});
 	}
+	checkEmptyChannel(t, errorMessage, sm)
 
 	errorMessage = "TestTimeoutLeader"
 	sm = getSampleSM("Leader")
@@ -86,11 +93,54 @@ func TestTimeout(t *testing.T){
 			prevLogTerm:initialSm.log[len(initialSm.log)-1].term, entries:nil,
 			leaderCommit:initialSm.commitIndex}});
 	}
+	checkEmptyChannel(t, errorMessage, sm)
+}
+
+
+func TestVoteResp (t *testing.T) {
+	sm := getSampleSM("Follower")
+	sm.netCh <- VoteRespEv{term:sm.term-1, voteGranted:true}
+	errorMessage := "TestVoteRespFollower"
+	checkEmptyChannel(t, errorMessage, sm)
+
+	sm = getSampleSM("Candidate")
+	initialSm := getSampleSM("Candidate")
+	errorMessage = "TestVoteRespCandidate"
+	sm.netCh <- VoteRespEv{term:sm.term, voteGranted:true}
+	expect(t, errorMessage, "Candidate", sm.state);
+	sm.netCh <- VoteRespEv{term:sm.term, voteGranted:false}
+	expect(t, errorMessage, "Candidate", sm.state);
+	checkEmptyChannel(t, errorMessage, sm)
+	sm.netCh <- VoteRespEv{term:sm.term, voteGranted:true}
+	expect(t, errorMessage, "Leader", sm.state);
+	response := <-sm.actionCh
+	expect(t, errorMessage, response, Alarm{t:timeoutTime})
+	for _, peer := range sm.peers {
+		response = <-sm.actionCh
+		expect(t, errorMessage, response, Send{peer, AppendEntriesReqEv{
+			term:initialSm.term, leaderId:initialSm.id, prevLogIndex:len(initialSm.log)-1,
+			prevLogTerm:initialSm.log[len(initialSm.log)-1].term, entries:nil,
+			leaderCommit:initialSm.commitIndex}});
+	}
+	checkEmptyChannel(t, errorMessage, sm)
+
+	sm = getSampleSM("Leader")
+	sm.netCh <- VoteRespEv{term:sm.term, voteGranted:true}
+	errorMessage = "TestVoteRespLeader"
+	checkEmptyChannel(t, errorMessage, sm)
+}
+func TestEventLoop (t *testing.T) {
 
 }
 
-func TestEventLoop (t *testing.T) {
-
+func checkEmptyChannel(t *testing.T, errorMessage string, sm *StateMachine){
+	select {
+	case _, ok := <-sm.actionCh:
+		if ok {
+			t.Error(errorMessage+" Extra event written to channel.\n")
+		}
+	default:
+	}
 }
 
 func expect(t *testing.T, message string, response interface{}, expected interface{}){
@@ -107,7 +157,7 @@ func getSampleLog() []logEntry{
 
 func getSampleSM(state string) *StateMachine{
 	sm := &StateMachine{id: 2, term: 3, commitIndex: 1, state: state, peers:[]int{1,3,4,5},
-		votedFor: 0, log: getSampleLog(), voteCount:0,
+		votedFor: 0, log: getSampleLog(), voteCount:1,
 		netCh:make(chan interface{}), timeoutCh:make(chan interface{}), actionCh:make(chan interface{}),
 		clientCh:make(chan interface{}),matchIndex: make(map[int]int), nextIndex: map[int]int{1:2, 2:2, 3:1, 4:2, 5:2}}
 	go func(){
