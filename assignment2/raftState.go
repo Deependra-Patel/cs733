@@ -132,7 +132,7 @@ func (sm *StateMachine) timeout() []interface{} {
 		resp = append(resp, Alarm{timeoutTime})
 		for _, peer := range sm.peers {
 			resp = append(resp, Send{peer, VoteReqEv{term: sm.term, candidateId: sm.id,
-				lastLogIndex: len(sm.log), lastLogTerm: sm.log[len(sm.log)-1].term}})
+				lastLogIndex: len(sm.log)-1, lastLogTerm: sm.log[len(sm.log)-1].term}})
 		}
 	case "Candidate":
 		sm.term++
@@ -142,7 +142,7 @@ func (sm *StateMachine) timeout() []interface{} {
 		resp = append(resp, Alarm{timeoutTime})
 		for _, peer := range sm.peers {
 			resp = append(resp, Send{peer, VoteReqEv{term: sm.term, candidateId: sm.id,
-				lastLogIndex: len(sm.log), lastLogTerm: sm.log[len(sm.log)-1].term}})
+				lastLogIndex: len(sm.log)-1, lastLogTerm: sm.log[len(sm.log)-1].term}})
 		}
 	case "Leader":
 		resp = append(resp, Alarm{timeoutTime})
@@ -218,7 +218,7 @@ func (sm *StateMachine) appendEntriesResp(appendEntriesResp AppendEntriesRespEv)
 				sm.matchIndex[appendEntriesResp.from] = newIndex
 				sm.nextIndex[appendEntriesResp.from]++
 				count := 1
-				for peer := range sm.peers {
+				for _,peer := range sm.peers {
 					if sm.matchIndex[peer] >= newIndex {
 						count++
 					}
@@ -253,10 +253,10 @@ func (sm *StateMachine) append(appendEv AppendEv) []interface{} {
 		resp = append(resp, Commit{index:-1, data:appendEv.data, err:"ERR_NOT_LEADER"})
 	case "Leader":
 		sm.log = append(sm.log, logEntry{term:sm.term, data:appendEv.data})
-		resp = append(resp, LogStore{index:len(sm.log)-1, data:appendEv.data, term:sm.id})
-		for peer := range sm.peers{
+		resp = append(resp, LogStore{index:len(sm.log)-1, data:appendEv.data, term:sm.term})
+		for _, peer := range sm.peers{
 			resp = append(resp, Send{peer,
-				AppendEntriesReqEv{sm.term, sm.id, sm.nextIndex[peer], sm.log[sm.nextIndex[peer]].term,
+				AppendEntriesReqEv{sm.term, sm.id, sm.nextIndex[peer]-1, sm.log[sm.nextIndex[peer]-1].term,
 					sm.log[sm.nextIndex[peer]:], sm.commitIndex}})
 		}
 	}
@@ -331,13 +331,20 @@ func (sm *StateMachine) eventLoop() {
 	for {
 		select {
 		case appendMsg := <- sm.clientCh:
-		sm.actionCh <- sm.ProcessEvent(appendMsg)
+			responses := sm.ProcessEvent(appendMsg)
+			for _,response := range responses{
+				sm.actionCh <- response
+			}
 		case peerMsg := <- sm.netCh:
-			fmt.Println(sm.ProcessEvent(peerMsg))
-			sm.actionCh <- sm.ProcessEvent(peerMsg)
-			fmt.Print("random stuff")
+			responses := sm.ProcessEvent(peerMsg)
+			for _,response := range responses{
+				sm.actionCh <- response
+			}
 		case <- sm.timeoutCh :
-			sm.actionCh <- sm.ProcessEvent(TimeoutEv{})
+			responses := sm.ProcessEvent(TimeoutEv{})
+			for _,response := range responses{
+				sm.actionCh <- response
+			}
 		}
 	}
 }
