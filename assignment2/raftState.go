@@ -167,6 +167,7 @@ func (sm *StateMachine) appendEntriesReq(appendEntries AppendEntriesReqEv) []int
 				AppendEntriesRespEv{term: sm.term, success: false}})
 		} else {
 			sm.term = appendEntries.term
+			resp = append(resp, StateStore{currentTerm:sm.term, votedFor:0})
 			resp = append(resp, Alarm{t: timeoutTime})
 			if len(sm.log) > appendEntries.prevLogIndex &&
 				sm.log[appendEntries.prevLogIndex].term == appendEntries.prevLogTerm {
@@ -314,26 +315,26 @@ func (sm *StateMachine) ProcessEvent(ev interface{}) []interface{}{
 	default:
 		println("Unrecognized")
 	}
-	fmt.Println("No. of output actions ", len(outputActions))
-	for _, element := range outputActions {
-		switch element.(type) {
-		case Send:
-			ev := element.(Send)
-			ev.print()
-		case Commit:
-			ev := element.(Commit)
-			ev.print()
-		case Alarm:
-			ev := element.(Alarm)
-			ev.print()
-		case LogStore:
-			ev := element.(LogStore)
-			ev.print()
-		case StateStore:
-			ev := element.(StateStore)
-			ev.print()
-		}
-	}
+	// fmt.Println("No. of output actions ", len(outputActions))
+	// for _, element := range outputActions {
+	// 	switch element.(type) {
+	// 	case Send:
+	// 		ev := element.(Send)
+	// 		ev.print()
+	// 	case Commit:
+	// 		ev := element.(Commit)
+	// 		ev.print()
+	// 	case Alarm:
+	// 		ev := element.(Alarm)
+	// 		ev.print()
+	// 	case LogStore:
+	// 		ev := element.(LogStore)
+	// 		ev.print()
+	// 	case StateStore:
+	// 		ev := element.(StateStore)
+	// 		ev.print()
+	// 	}
+	// }
 	return outputActions
 }
 

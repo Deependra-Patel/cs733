@@ -96,6 +96,27 @@ func TestTimeout(t *testing.T){
 	checkEmptyChannel(t, errorMessage, sm)
 }
 
+func TestAppendEntriesResp (t *testing.T) {
+	sm := getSampleSM("Follower")
+	sm.netCh <- AppendEntriesRespEv{term:sm.term-1, from:sm.peers[0], success:false}
+	errorMessage := "TestAppendEntriesRespFollower"
+	checkEmptyChannel(t, errorMessage, sm)
+
+	sm = getSampleSM("Candidate")
+	sm.netCh <- AppendEntriesRespEv{term:sm.term-1, from:sm.peers[0], success:false}
+	errorMessage = "TestAppendEntriesRespCandidate"
+	checkEmptyChannel(t, errorMessage, sm)
+
+	sm = getSampleSM("Leader")
+	//initialSm := getSampleSM("Leader")
+	errorMessage = "TestAppendEntriesRespLeader"
+	// sm.netCh <- AppendEntriesRespEv{term:sm.term, from:4, success:true}
+	// expect(t, errorMessage, sm.commitIndex, 1)
+	// sm.netCh <- AppendEntriesRespEv{term:sm.term, from:5, success:true}
+	// sm.netCh <- AppendEntriesRespEv{term:sm.term, from:1, success:true}
+	// expect(t, errorMessage, sm.commitIndex, 2)
+	//checkEmptyChannel(t, errorMessage, sm)
+}
 
 func TestVoteResp (t *testing.T) {
 	sm := getSampleSM("Follower")
@@ -159,7 +180,7 @@ func getSampleSM(state string) *StateMachine{
 	sm := &StateMachine{id: 2, term: 3, commitIndex: 1, state: state, peers:[]int{1,3,4,5},
 		votedFor: 0, log: getSampleLog(), voteCount:1,
 		netCh:make(chan interface{}), timeoutCh:make(chan interface{}), actionCh:make(chan interface{}),
-		clientCh:make(chan interface{}),matchIndex: make(map[int]int), nextIndex: map[int]int{1:2, 2:2, 3:1, 4:2, 5:2}}
+		clientCh:make(chan interface{}),matchIndex:map[int]int{1:1, 3:0, 4:1, 5:1}, nextIndex: map[int]int{1:2, 3:1, 4:2, 5:2}}
 	go func(){
 		sm.eventLoop()
 	}()
