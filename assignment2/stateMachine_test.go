@@ -157,6 +157,8 @@ func TestAppendEntriesReq(t *testing.T) {
 		LogStore{index: 5, term: initialSm.term + 1, data: []byte("bcd")},
 		Send{peerId: initialSm.peers[0],
 			event: AppendEntriesRespEv{from: initialSm.id, term: initialSm.term + 1, success: true}}}
+	expectActions(t, errorMessage, sm, expectedActions)
+	expect(t, errorMessage, sm.state, "Follower")
 
 	sm = getSampleSM("Leader")
 	initialSm = getSampleSM("Leader")
@@ -176,6 +178,8 @@ func TestAppendEntriesReq(t *testing.T) {
 		LogStore{index: 5, term: initialSm.term + 1, data: []byte("bcd")},
 		Send{peerId: initialSm.peers[0],
 			event: AppendEntriesRespEv{from: initialSm.id, term: initialSm.term + 1, success: true}}}
+	expectActions(t, errorMessage, sm, expectedActions)
+	expect(t, errorMessage, sm.state, "Follower")
 	checkEmptyChannel(t, errorMessage, sm)
 }
 

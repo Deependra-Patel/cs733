@@ -234,7 +234,8 @@ func (sm *StateMachine) appendEntriesReq(appendEntries AppendEntriesReqEv) []int
 				i := 0
 				for i < len(appendEntries.entries) {
 					resp = append(resp,
-						LogStore{index: index + i, data: appendEntries.entries[i].data})
+						LogStore{index: index + i, term: sm.term, data: appendEntries.entries[i].data})
+					i += 1
 				}
 				resp = append(resp, Send{appendEntries.leaderId,
 					AppendEntriesRespEv{from: sm.id, term: sm.term, success: true}})
