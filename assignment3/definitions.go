@@ -1,4 +1,4 @@
-package assignment2
+package assignment3
 
 type AppendEv struct {
 	data []byte
@@ -46,6 +46,7 @@ type VoteRespEv struct {
 
 type StateMachine struct {
 	id          int // server id
+	leaderId    int //leader id
 	state       string
 	peers       []int // other server ids
 	term        int

@@ -1,14 +1,13 @@
 package assignment3
 
-import "github.com/Deependra-Patel/cs733/assignment3/assignment2/"
-
-// Returns a Node object
-func raftNew(config Config) Node
+import "github.com/cs733-iitb/log"
 
 type RaftNode struct{
 	Node
 	eventChan chan interface{}
-	timoutChan chan interface{}
+	timeoutChan chan interface{}
+	sm StateMachine
+	lg *log
 }
 
 type Node interface {
