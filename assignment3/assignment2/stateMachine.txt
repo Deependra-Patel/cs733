@@ -1,0 +1,183 @@
+Deependra Patel
+120050032
+State machine design
+Google doc link (better indented) :
+https://docs.google.com/document/d/11B64mMgDwucx1AXKzf_QvQV5poGkPoUv0GQhUMk1X4o/edit
+
+Earlier committed on 
+https://github.com/Deependra-Patel/cs733/blob/master/assignment2/stateMachine.txt
+
+#################
+State : Follower
+on VoteReq(term, candidateId, lastLogIndex, lastLogTerm)
+	if sm.term <= term &&
+		sm.votedFor == nil or msg.candidateId &&
+		//candidate log is at least as up-to-date as receivers log,
+       (lastLogTerm > sm.lastLogTerm || (lastLogTerm == sm.lastLogTerm && lastLogIndex >= sm.lastLogIndex))  
+			sm.term = msg.term
+			sm.votedFor = msg.candidateId                      
+               action = StateStore(votedFor = msg.candidateId, currentTerm = sm.term)
+			action = Send(candidateId, VoteResp(sm.term, voteGranted = yes))
+	Otherwise, reject vote:
+		action = Send(candidateId, VoteResp(sm.term, voteGranted = no))
+
+on VoteResp(term, voteGranted)
+	do nothing
+
+on Timeout()
+	sm.state = Candidate
+	action = Alarm(t)
+	sm.term += 1
+	action = StateStore(votedFor = sm.id, currentTerm = sm.term)
+	sm.voteCount = 1
+	sm.votedFor = sm.id
+	for peer in peers
+	action = Send(peer, VoteReq(sm.Id, sm.term, sm.lastLogIndex, sm.lastLogTerm))
+
+on AppendEntriesReq(term, leaderId, prevLogIndex, prevLogTerm, entries[], leaderCommit)
+	if term<sm.term 
+		action = Send(leaderId, AppendEntriesResp(sm.term, success=false))
+	Otherwise,
+		Alarm(t)
+		sm.term = term
+		if log[prevLogIndex]!=nil && prevLogTerm = log[prevLogIndex].term
+log[lastindex + 1 onwards] = entries
+			persistent store data on log (i = 0:len(entries)-1)
+		action = LogStore(lastindex+i+1, entries[i].data)
+		LogStore()
+		if leaderCommit > commitIndex 
+			commitIndex = min(leaderCommit, lastLogEntry)
+
+Otherwise,
+action = Send(msg.from, AppendEntriesRes(sm.term, success = false)) 
+
+
+on AppendEntriesResp(term, success)
+	do nothing
+
+
+
+on Append(data)
+action = Commit(-1, data, err = ERR_NOT_LEADER)
+
+#################
+State : Candidate
+on VoteReq(term, candidateId, lastLogIndex, lastLogTerm)
+	if sm.term < term &&
+		//candidate log is at least as up-to-date as receivers log,
+       (lastLogTerm > sm.lastLogTerm || (lastLogTerm == sm.lastLogTerm && lastLogIndex >= sm.lastLogIndex))  
+               sm.state = follower
+			sm.term = msg.term
+			sm.votedFor = msg.candidateId                      
+               action = StateStore(votedFor = msg.candidateId, currentTerm = sm.term)
+			action = Send(candidateId, VoteResp(sm.term, voteGranted = yes))
+	Otherwise, reject vote:
+		action = Send(candidateId, VoteResp(sm.term, voteGranted = no))
+
+
+on VoteResp(term, voteGranted)
+	if term == sm.term && voteGranted == yes
+		sm.voteCount++
+		if (sm.voteCount > (n+1)/2)
+			sm.state = Leader
+			for peer in peers
+				action = Send(peer, AppendEntriesRequest(sm.term, sm.id, sm.lastLogIndex, sm.lastLogTerm, nil, sm.commitIndex)
+nextIndex[peer] = lastLogIndex+1
+matchIndex[peer] = 0
+	
+		
+on Timeout()
+	sm.term += 1
+	sm.voteCount = 1
+action = Alarm(t)
+action = StateStore(term = sm.term, votedFor = sm.id)
+	for peer in peers
+		action = Send(peer, VoteReq(sm.id, sm.term, sm.lastLogIndex, sm.lastLogTerm))
+
+on AppendEntriesReq(term, leaderId, prevLogIndex, entries[], commitIndex)
+	if term>sm.term
+		sm.state = follower
+	sm.term = term
+action = StateStore(term = sm.term, votedFor = sm.id)
+	Alarm(t)
+     if prevLogTerm = log[prevLogIndex].term
+log[lastindex + 1 onwards] = entries
+			persistent store data on log (i = 0:len(entries)-1)
+action = LogStore(lastindex+i+1, entries[i].data)
+if leaderCommit > commitIndex 
+	commitIndex = min(leaderCommit, lastLogEntry)
+Otherwise,
+action = Send(msg.from, AppendEntriesRes(sm.term, success = false)) 
+Otherwise,
+action = Send(msg.from, AppendEntriesRes(sm.term, success = false)) 
+
+
+on AppendEntriesResp(term, success)
+	do nothing
+
+
+on Append(data)
+action = Commit(-1, data, err = ERR_NOT_LEADER)
+
+#################
+State : Leader
+on VoteReq(term, candidateId, lastLogIndex, lastLogTerm)
+	if sm.term >= term:	
+action = Send(candidateId, VoteResp(sm.term, voteGranted = no))
+	action = Send(candidateId, AppendEntriesRequest(sm.term, sm.id, sm.lastLogIndex, sm.lastLogTerm, nil, sm.commitIndex)			
+	else {
+	sm.state = Follower
+	sm.term = term
+if (lastLogTerm > sm.lastLogTerm || (lastLogTerm == sm.lastLogTerm && lastLogIndex >= sm.lastLogIndex)) //upto date cond 
+		sm.votedFor = msg.candidateId                      
+       action = StateStore(votedFor = msg.candidateId, currentTerm = sm.term)
+		action = Send(candidateId, VoteResp(sm.term, voteGranted = yes))
+	Otherwise, reject vote:
+       action = StateStore(votedFor = nil, currentTerm = sm.term)
+		action = Send(candidateId, VoteResp(sm.term, voteGranted = no))
+}
+
+
+
+on VoteResp(term, voteGranted)
+	do nothing
+
+on Timeout()
+Alarm(t)
+	for peer in peers
+		action = Send(peer, AppendEntriesRequest(sm.term, sm.id, sm.lastLogIndex, sm.lastLogTerm, nil, sm.commitIndex)
+
+on AppendEntriesReq(term, leaderId, prevLogIndex, entries[], commitIndex)
+	if term <= sm.term
+		do nothing
+	else 
+		sm.state = follower
+	sm.term = term
+	action = StateStore(term = sm.term, votedFor = nil)
+	Alarm(t)
+
+           
+
+on AppendEntriesResp(term, success)
+if term == sm.term
+if success = True
+	matchIndex[msg.from] = nextIndex[msg.from];
+	nextIndex[msg.from] ++
+	If there exists an N such that N > commitIndex, a majority of matchIndex[i] ≥ N, and log[N].term == currentTerm
+else if success = False
+	nextIndex[msg.from]--
+	action = Send(msg.id, AppendEntriesReq(sm.term, sm.id,nextIndex[msg.from], log[nextIndex[msg.from]].term, commitIndex)	
+else if term > sm.term
+	sm.state = follower
+sm.term = term
+	action = StateStore(term = sm.term, votedFor = nil)
+	Alarm(t)
+	
+	
+
+on Append(data)
+	lastLogIndex += 1
+	log[lastLogIndex] = term
+	action = LogStore(lastLogIndex, data)
+	for peer in peers
+		action = Send(peer, AppendEntriesRequest(sm.term, sm.id, sm.lastLogIndex, sm.lastLogTerm, data, sm.commitIndex)
