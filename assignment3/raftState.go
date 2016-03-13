@@ -1,4 +1,4 @@
-package assignment3
+package main
 
 import (
 	"fmt"
@@ -380,16 +380,19 @@ func (sm *StateMachine) eventLoop() {
 			for _, response := range responses {
 				sm.actionCh <- response
 			}
+			sm.actionCh <- Finish{}
 		case peerMsg := <-sm.netCh:
 			responses := sm.ProcessEvent(peerMsg)
 			for _, response := range responses {
 				sm.actionCh <- response
 			}
+			sm.actionCh <- Finish{}
 		case <-sm.timeoutCh:
 			responses := sm.ProcessEvent(TimeoutEv{})
 			for _, response := range responses {
 				sm.actionCh <- response
 			}
+			sm.actionCh <- Finish{}
 		}
 	}
 }

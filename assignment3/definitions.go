@@ -1,4 +1,4 @@
-package assignment3
+package main
 
 type AppendEv struct {
 	data []byte
@@ -82,4 +82,8 @@ type LogStore struct {
 	index int
 	term  int
 	data  []byte
+}
+
+type Finish struct {
+	//Dummy class to signal end of action
 }
