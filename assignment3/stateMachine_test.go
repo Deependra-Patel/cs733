@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"reflect"
 	"testing"
+	"time"
 )
 
 func TestAppend(t *testing.T) {
@@ -56,7 +57,7 @@ func TestTimeout(t *testing.T) {
 	response := <-sm.actionCh
 	expect(t, errorMessage, response, StateStore{currentTerm: initialSm.term + 1, votedFor: initialSm.id})
 	response = <-sm.actionCh
-	expect(t, errorMessage, response, Alarm{t: timeoutTime})
+	expect(t, errorMessage, response, Alarm{t: sm.ElectionTimeout})
 	for _, peer := range sm.peers {
 		response = <-sm.actionCh
 		expect(t, errorMessage, response, Send{peer, VoteReqEv{
@@ -77,7 +78,10 @@ func TestTimeout(t *testing.T) {
 	response = <-sm.actionCh
 	expect(t, errorMessage, response, StateStore{currentTerm: initialSm.term + 1, votedFor: initialSm.id})
 	response = <-sm.actionCh
-	expect(t, errorMessage, response, Alarm{t: timeoutTime})
+	response1 := response.(Alarm)
+	if response1.t < sm.ElectionTimeout || response1.t > 2*sm.ElectionTimeout{
+		t.Error("Election timeout for candidate not chosen correctly")
+	}
 	for _, peer := range initialSm.peers {
 		response = <-sm.actionCh
 		expect(t, errorMessage, response, Send{peer, VoteReqEv{
@@ -94,7 +98,7 @@ func TestTimeout(t *testing.T) {
 	expect(t, errorMessage, sm.state, "Leader")
 	expect(t, errorMessage, sm.term, initialSm.term)
 	response = <-sm.actionCh
-	expect(t, errorMessage, response, Alarm{t: timeoutTime})
+	expect(t, errorMessage, response, Alarm{t: sm.HeartbeatTimeout})
 	for _, peer := range sm.peers {
 		response = <-sm.actionCh
 		if len(initialSm.log) != initialSm.nextIndex[peer] {
@@ -133,7 +137,7 @@ func TestAppendEntriesReq(t *testing.T) {
 		PrevLogIndex: 4, PrevLogTerm: 3, Entries: logEntries, LeaderCommit: 6}
 	expectedActions = []interface{}{
 		StateStore{currentTerm: initialSm.term + 2, votedFor: 0},
-		Alarm{t: timeoutTime},
+		Alarm{t: sm.ElectionTimeout},
 		Send{peerId: initialSm.peers[0],
 			event: AppendEntriesRespEv{From: initialSm.id, Term: initialSm.term + 2, Success: false}}}
 	expectActions(t, errorMessage, sm, expectedActions)
@@ -142,7 +146,7 @@ func TestAppendEntriesReq(t *testing.T) {
 	sm.netCh <- AppendEntriesReqEv{Term: initialSm.term + 2, LeaderId: initialSm.peers[0],
 		PrevLogIndex: 3, PrevLogTerm: 2, Entries: logEntries, LeaderCommit: 4}
 	expectedActions = []interface{}{
-		Alarm{t: 10},
+		Alarm{t: sm.ElectionTimeout},
 		LogStore{index: 4, term: initialSm.term + 2, data: []byte("abd")},
 		LogStore{index: 5, term: initialSm.term + 2, data: []byte("bcd")},
 		Send{peerId: initialSm.peers[0],
@@ -164,7 +168,7 @@ func TestAppendEntriesReq(t *testing.T) {
 		PrevLogIndex: 3, PrevLogTerm: 2, Entries: logEntries, LeaderCommit: 4}
 	expectedActions = []interface{}{
 		StateStore{currentTerm: initialSm.term + 1, votedFor: 0},
-		Alarm{t: timeoutTime},
+		Alarm{t: sm.ElectionTimeout},
 		LogStore{index: 4, term: initialSm.term + 1, data: []byte("abd")},
 		LogStore{index: 5, term: initialSm.term + 1, data: []byte("bcd")},
 		Send{peerId: initialSm.peers[0],
@@ -188,7 +192,7 @@ func TestAppendEntriesReq(t *testing.T) {
 		PrevLogIndex: 3, PrevLogTerm: 2, Entries: logEntries, LeaderCommit: 4}
 	expectedActions = []interface{}{
 		StateStore{currentTerm: initialSm.term + 1, votedFor: 0},
-		Alarm{t: timeoutTime},
+		Alarm{t: sm.ElectionTimeout},
 		LogStore{index: 4, term: initialSm.term + 1, data: []byte("abd")},
 		LogStore{index: 5, term: initialSm.term + 1, data: []byte("bcd")},
 		Send{peerId: initialSm.peers[0],
@@ -221,14 +225,18 @@ func TestAppendEntriesResp(t *testing.T) {
 		Send{peerId: initialSm.peers[0], event: AppendEntriesReqEv{Term: initialSm.term, LeaderId: initialSm.id,
 			PrevLogIndex: 1, PrevLogTerm: 1, Entries: initialSm.log[2:], LeaderCommit: initialSm.commitIndex}}}
 	expectActions(t, errorMessage, sm, expectedActions)
-	//commit case
+	<- sm.actionCh //For dummy Finish
+	////commit case
+	checkEmptyChannel(t, errorMessage, sm)
 	sm.netCh <- AppendEntriesRespEv{From: 4, Term: initialSm.term, Success: true}
+	<- sm.actionCh //For dummy Finish
 	sm.netCh <- AppendEntriesRespEv{From: 5, Term: initialSm.term, Success: true}
 	expectedActions = []interface{}{
 		Commit{index: 2, data: initialSm.log[2].Data},
-		Commit{index: 3, data: initialSm.log[3].Data}}
+	}
 	expectActions(t, errorMessage, sm, expectedActions)
-	expect(t, errorMessage, sm.commitIndex, 3)
+	<- sm.actionCh //For dummy Finish
+	expect(t, errorMessage, sm.commitIndex, 2)
 	checkEmptyChannel(t, errorMessage, sm)
 }
 
@@ -405,7 +413,7 @@ func TestVoteResp(t *testing.T) {
 	sm.netCh <- VoteRespEv{Term: sm.term, VoteGranted: true}
 	expect(t, errorMessage, "Leader", sm.state)
 	response := <-sm.actionCh
-	expect(t, errorMessage, response, Alarm{t: timeoutTime})
+	expect(t, errorMessage, response, Alarm{t: sm.HeartbeatTimeout})
 	for _, peer := range sm.peers {
 		response = <-sm.actionCh
 		if len(initialSm.log) != initialSm.nextIndex[peer] {
@@ -466,7 +474,8 @@ func getSampleSM(state string) *StateMachine {
 		votedFor: 0, log: getSampleLog(), voteCount: 1,
 		netCh: make(chan interface{}), timeoutCh: make(chan interface{}), actionCh: make(chan interface{}),
 		clientCh: make(chan interface{}), matchIndex: map[int]int{1: 1, 3: 0, 4: 1, 5: 1},
-		nextIndex: map[int]int{1: 2, 3: 1, 4: 2, 5: 2}}
+		nextIndex: map[int]int{1: 2, 3: 1, 4: 2, 5: 2}, ElectionTimeout:time.Second*time.Duration(2),
+		HeartbeatTimeout:time.Second*time.Duration(1)}
 	go func() {
 		sm.eventLoop()
 	}()

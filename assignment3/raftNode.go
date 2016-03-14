@@ -12,6 +12,7 @@ import (
 	"time"
 )
 
+
 // Returns a Node object
 func New(config Config) RaftNode {
 	peerIds := make([]int, 0)
@@ -25,7 +26,8 @@ func New(config Config) RaftNode {
 		peers: peerIds, votedFor: 0, log: make([]logEntry, 1), voteCount: 0,
 		netCh: make(chan interface{}), timeoutCh: make(chan interface{}), actionCh: make(chan interface{}),
 		clientCh: make(chan interface{}), matchIndex: map[int]int{},
-		nextIndex: map[int]int{}, leaderId:-1}
+		nextIndex: map[int]int{}, leaderId:-1, HeartbeatTimeout:config.HeartbeatTimeout,
+		ElectionTimeout:config.ElectionTimeout}
 
 	rn.sm.log[0] = logEntry{Term:0, Data:[]byte("Dummy")}
 	for _, peerId := range peerIds{
@@ -34,10 +36,14 @@ func New(config Config) RaftNode {
 	}
 	lg, err := log.Open(config.LogDir)
 	if err != nil {
-		fmt.Errorf("Log can't be created")
+		logger.Println("Log can't be created", err)
 	}
 	rn.lg = lg
 	rn.lg.RegisterSampleEntry(logEntry{})
+	err = rn.lg.Append(logEntry{Term:0, Data:[]byte("Dummy")})
+	if err != nil{
+		logger.Println("Couldn't write to log", err)
+	}
 	serverConfig := createServerConfig(config.cluster)
 	rn.server, err = cluster.New(config.Id, serverConfig)
 	if err != nil {
@@ -56,13 +62,21 @@ func New(config Config) RaftNode {
 	rn.commitChan = make(chan CommitInfo)
 	rn.eventChan = make(chan interface{})
 
-	rn.stateStoreFile = "stateStoreFile"
+	rn.stateStoreFile = "stateStoreFile" + strconv.Itoa(config.Id)
 	_, err = os.Create(rn.stateStoreFile)
 	if err != nil {
 		logger.Panic("Couldn't create stateStoreFile", err)
 	} else {
 		logger.Println("stateStoreFile created succesfully")
 	}
+
+	timerFunc := func(rn *RaftNode) func(){
+		return func() {
+			rn.timeoutChan <- TimeoutEv{}
+		}
+	}(&rn)
+
+	rn.timer = time.AfterFunc(rn.sm.ElectionTimeout, timerFunc)
 	return rn
 }
 
@@ -119,9 +133,19 @@ func (rn *RaftNode) doActions(actions []interface{}) {
 	for _, action := range actions {
 		switch action.(type) {
 		case Alarm:
-			//timer := action.(Alarm)
+			alarm := action.(Alarm)
+			logger.Println("Setting Alarm.. ID:", rn.Id(), alarm.t.Nanoseconds())
+			timerFunc := func(rn *RaftNode) func(){
+				return func() {
+					rn.timeoutChan <- TimeoutEv{}
+				}
+			}(rn)
+			rn.timer.Stop()
+			rn.timer = time.AfterFunc(alarm.t, timerFunc)
+
 		case LogStore:
 			logStore := action.(LogStore)
+			logger.Printf("Storing in Log ID:%v %+v\n", rn.Id(), logStore)
 			rn.lg.Append(logEntry{Term: logStore.term, Data: logStore.data})
 		case StateStore:
 			stateStore := action.(StateStore)
@@ -144,6 +168,10 @@ func (rn *RaftNode) doActions(actions []interface{}) {
 				appendEntrRes := send.event.(AppendEntriesRespEv)
 				rn.server.Outbox() <- &cluster.Envelope{Pid: send.peerId, Msg: appendEntrRes}
 			}
+		case Commit:
+			commit := action.(Commit)
+			logger.Println("Committing.. ID:", rn.Id())
+			rn.commitChan <- CommitInfo{data:commit.data, err:commit.err, Index:commit.index}
 		default:
 			println("Unrecognized")
 		}
@@ -184,15 +212,13 @@ func (rn *RaftNode) processEvents() {
 	for {
 		select {
 		case ev := <- rn.eventChan:
-			//rn.sm.clientCh <- ev.(AppendEv)
 			logger.Printf("Append %+v\n", ev)
 			rn.doActions(getActionsFromSM(rn, ev))
 		case inbox := <-rn.server.Inbox():
 			logger.Printf("%v Inbox %+v\n", rn.Id(), inbox)
 			rn.doActions(getActionsFromSM(rn, inbox.Msg))
 		case <-rn.timeoutChan:
-			logger.Printf("Timout\n")
-			//rn.sm.timeoutCh <- TimeoutEv{}
+			logger.Printf("ID:%v Timeout\n", rn.Id())
 			rn.doActions(getActionsFromSM(rn, TimeoutEv{}))
 		}
 	}
@@ -208,9 +234,9 @@ func main() {
 				{Id: 6, Host: "localhost", Port: 7002},
 			},
 			Id:               1,
-			LogDir:           "mylog",
-			ElectionTimeout:  2,
-			HeartbeatTimeout: 1,
+			LogDir:           "mylog1",
+			ElectionTimeout:  time.Millisecond*time.Duration(2),
+			HeartbeatTimeout: time.Millisecond*time.Duration(1),
 		})
 	r2 := New(
 		Config{
@@ -220,9 +246,9 @@ func main() {
 				{Id: 6, Host: "localhost", Port: 7002},
 			},
 			Id:               4,
-			LogDir:           "mylog",
-			ElectionTimeout:  2,
-			HeartbeatTimeout: 1,
+			LogDir:           "mylog2",
+			ElectionTimeout:  time.Millisecond*time.Duration(2),
+			HeartbeatTimeout: time.Millisecond*time.Duration(1),
 		})
 	//r3 := New(
 	//	Config{
@@ -236,18 +262,19 @@ func main() {
 	//		ElectionTimeout:  2,
 	//		HeartbeatTimeout: 1,
 	//	})
-	r1.sm.state = "Leader"
+
 	go func() {
 		r1.processEvents()
 	}()
 	go func() {
 		r2.processEvents()
 	}()
+	time.Sleep(time.Millisecond*time.Duration(10))
 	//go func() {
 	//	r3.processEvents()
 	//}()
 	r1.Append([]byte("hi deependra"))
 
-	time.Sleep(time.Duration(1)*time.Second)
+	time.Sleep(time.Millisecond*time.Duration(10))
 	fmt.Println("sent")
 }

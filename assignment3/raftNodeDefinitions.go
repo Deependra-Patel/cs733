@@ -3,6 +3,7 @@ package main
 import (
 	"github.com/cs733-iitb/cluster"
 	"github.com/cs733-iitb/log"
+	"time"
 )
 
 type RaftNode struct {
@@ -14,6 +15,7 @@ type RaftNode struct {
 	lg             *log.Log
 	server         cluster.Server
 	stateStoreFile string
+	timer *time.Timer
 }
 
 type Node interface {
@@ -38,7 +40,7 @@ type Node interface {
 type CommitInfo struct {
 	data  []byte
 	Index int // or int .. whatever you have in your code
-	err   error
+	err   string
 	// Err can be errred
 }
 
@@ -47,8 +49,8 @@ type Config struct {
 	cluster          []NetConfig // Information about all servers, including this.
 	Id               int         // this node's id. One of the cluster's entries should match.
 	LogDir           string      // Log file directory for this node
-	ElectionTimeout  int
-	HeartbeatTimeout int
+	ElectionTimeout  time.Duration
+	HeartbeatTimeout time.Duration
 }
 
 type NetConfig struct {

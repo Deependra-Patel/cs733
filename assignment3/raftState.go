@@ -2,10 +2,11 @@ package main
 
 import (
 	"fmt"
+	"math/rand"
+	"time"
 )
 
-var timeoutTime int = 10
-var DEBUG = true
+var DEBUG = false
 
 func (commit *Commit) print() {
 	fmt.Printf("Commit %+v\n", *commit)
@@ -141,7 +142,8 @@ func (sm *StateMachine) voteResp(voteResp VoteRespEv) []interface{} {
 			sm.voteCount++
 			if sm.voteCount >= (len(sm.peers)+3)/2 {
 				sm.state = "Leader"
-				resp = append(resp, Alarm{t: timeoutTime})
+				fmt.Println("LEADER ELECTED", sm.id)
+				resp = append(resp, Alarm{t: sm.HeartbeatTimeout})
 				resp = append(resp, getHeartBeatEvents(sm)...)
 				for _, peer := range sm.peers {
 					sm.nextIndex[peer] = len(sm.log)
@@ -166,7 +168,7 @@ func (sm *StateMachine) timeout() []interface{} {
 		sm.votedFor = sm.id
 		sm.voteCount = 1
 		resp = append(resp, StateStore{sm.term, sm.votedFor})
-		resp = append(resp, Alarm{timeoutTime})
+		resp = append(resp, Alarm{sm.ElectionTimeout})
 		for _, peer := range sm.peers {
 			resp = append(resp, Send{peer, VoteReqEv{Term: sm.term, CandidateId: sm.id,
 				LastLogIndex: len(sm.log) - 1, LastLogTerm: sm.log[len(sm.log)-1].Term}})
@@ -176,13 +178,14 @@ func (sm *StateMachine) timeout() []interface{} {
 		sm.voteCount = 1
 		sm.votedFor = sm.id
 		resp = append(resp, StateStore{sm.term, sm.votedFor})
-		resp = append(resp, Alarm{timeoutTime})
+		rand.Seed(time.Now().UTC().UnixNano())
+		resp = append(resp, Alarm{sm.ElectionTimeout+time.Duration(rand.Int63n(sm.ElectionTimeout.Nanoseconds()))})
 		for _, peer := range sm.peers {
 			resp = append(resp, Send{peer, VoteReqEv{Term: sm.term, CandidateId: sm.id,
 				LastLogIndex: len(sm.log) - 1, LastLogTerm: sm.log[len(sm.log)-1].Term}})
 		}
 	case "Leader":
-		resp = append(resp, Alarm{timeoutTime})
+		resp = append(resp, Alarm{sm.HeartbeatTimeout})
 		resp = append(resp, getHeartBeatEvents(sm)...)
 	}
 	return resp
@@ -201,7 +204,7 @@ func (sm *StateMachine) appendEntriesReq(appendEntries AppendEntriesReqEv) []int
 				sm.votedFor = 0
 				resp = append(resp, StateStore{currentTerm: sm.term, votedFor: 0})
 			}
-			resp = append(resp, Alarm{t: timeoutTime})
+			resp = append(resp, Alarm{t: sm.ElectionTimeout})
 			if len(sm.log) > appendEntries.PrevLogIndex &&
 				sm.log[appendEntries.PrevLogIndex].Term == appendEntries.PrevLogTerm {
 				sm.log = append(sm.log[:appendEntries.PrevLogIndex +1], appendEntries.Entries...)
@@ -231,7 +234,7 @@ func (sm *StateMachine) appendEntriesReq(appendEntries AppendEntriesReqEv) []int
 			sm.term = appendEntries.Term
 			sm.votedFor = 0
 			resp = append(resp, StateStore{currentTerm: sm.term, votedFor: 0})
-			resp = append(resp, Alarm{t: timeoutTime})
+			resp = append(resp, Alarm{t: sm.ElectionTimeout})
 			if len(sm.log) > appendEntries.PrevLogIndex &&
 				sm.log[appendEntries.PrevLogIndex].Term == appendEntries.PrevLogTerm {
 				sm.log = append(sm.log[:appendEntries.PrevLogIndex +1], appendEntries.Entries...)
@@ -266,22 +269,24 @@ func (sm *StateMachine) appendEntriesResp(appendEntriesResp AppendEntriesRespEv)
 	case "Leader":
 		if sm.term == appendEntriesResp.Term {
 			if appendEntriesResp.Success {
-				newIndex := sm.nextIndex[appendEntriesResp.From] + 1
-				sm.matchIndex[appendEntriesResp.From] = newIndex
-				sm.nextIndex[appendEntriesResp.From]++
-				count := 1
-				for _, peer := range sm.peers {
-					if sm.matchIndex[peer] >= newIndex {
-						count++
+				if sm.nextIndex[appendEntriesResp.From] < len(sm.log) {
+					newIndex := sm.nextIndex[appendEntriesResp.From]
+					sm.matchIndex[appendEntriesResp.From] = newIndex
+					sm.nextIndex[appendEntriesResp.From] = len(sm.log)
+					count := 1
+					for _, peer := range sm.peers {
+						if sm.matchIndex[peer] >= newIndex {
+							count++
+						}
 					}
-				}
-				if count > (len(sm.peers)+1)/2 {
-					index := sm.commitIndex + 1
-					for index <= newIndex {
-						resp = append(resp, Commit{index: index, data: sm.log[index].Data, err: ""})
-						index += 1
+					if count > (len(sm.peers) + 1) / 2 {
+						index := sm.commitIndex + 1
+						for index <= newIndex {
+							resp = append(resp, Commit{index: index, data: sm.log[index].Data, err: ""})
+							index += 1
+						}
+						sm.commitIndex = newIndex
 					}
-					sm.commitIndex = newIndex
 				}
 			} else {
 				sm.nextIndex[appendEntriesResp.From]--
@@ -295,7 +300,7 @@ func (sm *StateMachine) appendEntriesResp(appendEntriesResp AppendEntriesRespEv)
 			sm.term = appendEntriesResp.Term
 			sm.votedFor = 0
 			resp = append(resp, StateStore{currentTerm: sm.term, votedFor: 0})
-			resp = append(resp, Alarm{t: timeoutTime})
+			resp = append(resp, Alarm{t: sm.ElectionTimeout})
 		}
 	}
 	return resp

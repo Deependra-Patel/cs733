@@ -1,5 +1,7 @@
 package main
 
+import "time"
+
 type AppendEv struct {
 	data []byte
 }
@@ -8,7 +10,7 @@ type TimeoutEv struct {
 }
 
 type Alarm struct {
-	t int
+	t time.Duration
 }
 
 type logEntry struct {
@@ -51,6 +53,8 @@ type StateMachine struct {
 	peers       []int // other server ids
 	term        int
 	voteCount   int
+	ElectionTimeout time.Duration
+	HeartbeatTimeout time.Duration
 	log         []logEntry
 	votedFor    int
 	commitIndex int
