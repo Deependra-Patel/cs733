@@ -27,7 +27,7 @@ func New(config Config) RaftNode {
 		clientCh: make(chan interface{}), matchIndex: map[int]int{},
 		nextIndex: map[int]int{}, leaderId:-1}
 
-	rn.sm.log[0] = logEntry{term:0, data:[]byte("Dummy")}
+	rn.sm.log[0] = logEntry{Term:0, Data:[]byte("Dummy")}
 	for _, peerId := range peerIds{
 		rn.sm.matchIndex[peerId] = 0
 		rn.sm.nextIndex[peerId] = 1
@@ -96,7 +96,7 @@ func (rn *RaftNode) CommittedIndex() int {
 // Returns the data at a log index, or an error.
 func (rn *RaftNode) Get(index int) (error, []byte) {
 	itf, err := rn.lg.Get(int64(index))
-	return err, (itf.(logEntry)).data
+	return err, (itf.(logEntry)).Data
 }
 
 // Node's id
@@ -122,15 +122,14 @@ func (rn *RaftNode) doActions(actions []interface{}) {
 			//timer := action.(Alarm)
 		case LogStore:
 			logStore := action.(LogStore)
-			rn.lg.Append(logEntry{term: logStore.term, data: logStore.data})
+			rn.lg.Append(logEntry{Term: logStore.term, Data: logStore.data})
 		case StateStore:
 			stateStore := action.(StateStore)
 			ioutil.WriteFile(rn.stateStoreFile, []byte(string(stateStore.currentTerm)+" "+
 				string(stateStore.votedFor)), 0644)
 		case Send:
 			send := action.(Send)
-			logger.Println("Received send request")
-			logger.Printf("%+v\n", action)
+			logger.Printf("Sending.. %+v\n", action)
 			switch send.event.(type) {
 			case VoteReqEv:
 				voteReq := send.event.(VoteReqEv)
@@ -151,7 +150,21 @@ func (rn *RaftNode) doActions(actions []interface{}) {
 	}
 }
 
-func getActionsFromSM(rn *RaftNode) []interface{} {
+
+func getActionsFromSM(rn *RaftNode, event interface{}) []interface{} {
+	switch event.(type) {
+	case AppendEntriesReqEv, AppendEntriesRespEv, VoteReqEv, VoteRespEv:
+		rn.sm.netCh <- event
+	case AppendEv:
+		ev := event.(AppendEv)
+		rn.sm.clientCh <- ev
+	case TimeoutEv:
+		ev := event.(TimeoutEv)
+		rn.sm.timeoutCh <- ev
+	default:
+		logger.Println("Unrecognised")
+	}
+
 	var actions []interface{}
 	Loop: for {
 		select {
@@ -164,7 +177,6 @@ func getActionsFromSM(rn *RaftNode) []interface{} {
 			}
 		}
 	}
-	fmt.Println(actions)
 	return actions
 }
 
@@ -172,16 +184,16 @@ func (rn *RaftNode) processEvents() {
 	for {
 		select {
 		case ev := <- rn.eventChan:
-			rn.sm.clientCh <- ev.(AppendEv)
-			logger.Println("Received this", ev)
-			rn.doActions(getActionsFromSM(rn))
+			//rn.sm.clientCh <- ev.(AppendEv)
+			logger.Printf("Append %+v\n", ev)
+			rn.doActions(getActionsFromSM(rn, ev))
 		case inbox := <-rn.server.Inbox():
-			logger.Println("Received this", inbox)
-			rn.doActions(getActionsFromSM(rn))
+			logger.Printf("%v Inbox %+v\n", rn.Id(), inbox)
+			rn.doActions(getActionsFromSM(rn, inbox.Msg))
 		case <-rn.timeoutChan:
-			logger.Println("Timeout occured on node")
-			rn.sm.timeoutCh <- TimeoutEv{}
-			rn.doActions(getActionsFromSM(rn))
+			logger.Printf("Timout\n")
+			//rn.sm.timeoutCh <- TimeoutEv{}
+			rn.doActions(getActionsFromSM(rn, TimeoutEv{}))
 		}
 	}
 }
@@ -192,22 +204,49 @@ func main() {
 		Config{
 			cluster: []NetConfig{
 				{Id: 1, Host: "localhost", Port: 7000},
-				{Id: 2, Host: "localhost", Port: 7001},
-				{Id: 3, Host: "localhost", Port: 7002},
+				{Id: 4, Host: "localhost", Port: 7001},
+				{Id: 6, Host: "localhost", Port: 7002},
 			},
 			Id:               1,
 			LogDir:           "mylog",
 			ElectionTimeout:  2,
 			HeartbeatTimeout: 1,
 		})
+	r2 := New(
+		Config{
+			cluster: []NetConfig{
+				{Id: 1, Host: "localhost", Port: 7000},
+				{Id: 4, Host: "localhost", Port: 7001},
+				{Id: 6, Host: "localhost", Port: 7002},
+			},
+			Id:               4,
+			LogDir:           "mylog",
+			ElectionTimeout:  2,
+			HeartbeatTimeout: 1,
+		})
+	//r3 := New(
+	//	Config{
+	//		cluster: []NetConfig{
+	//			{Id: 1, Host: "localhost", Port: 7000},
+	//			{Id: 4, Host: "localhost", Port: 7001},
+	//			{Id: 6, Host: "localhost", Port: 7002},
+	//		},
+	//		Id:               6,
+	//		LogDir:           "mylog",
+	//		ElectionTimeout:  2,
+	//		HeartbeatTimeout: 1,
+	//	})
 	r1.sm.state = "Leader"
 	go func() {
 		r1.processEvents()
 	}()
-	//r1.Append([]byte("hi deependra"))
 	go func() {
-		r1.timeoutChan <- timeoutTime
+		r2.processEvents()
 	}()
+	//go func() {
+	//	r3.processEvents()
+	//}()
+	r1.Append([]byte("hi deependra"))
 
 	time.Sleep(time.Duration(1)*time.Second)
 	fmt.Println("sent")

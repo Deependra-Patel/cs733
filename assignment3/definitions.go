@@ -12,36 +12,36 @@ type Alarm struct {
 }
 
 type logEntry struct {
-	term int
-	data []byte
+	Term int
+	Data []byte
 }
 
 type AppendEntriesReqEv struct {
-	term         int
-	leaderId     int
-	prevLogIndex int
-	prevLogTerm  int
-	entries      []logEntry
-	leaderCommit int
+	Term         int
+	LeaderId     int
+	PrevLogIndex int
+	PrevLogTerm  int
+	Entries      []logEntry
+	LeaderCommit int
 }
 
 type AppendEntriesRespEv struct {
-	from    int
-	term    int
-	success bool
+	From    int
+	Term    int
+	Success bool
 }
 
 type VoteReqEv struct {
-	term         int
-	candidateId  int
-	lastLogIndex int
-	lastLogTerm  int
+	Term         int
+	CandidateId  int
+	LastLogIndex int
+	LastLogTerm  int
 }
 
 type VoteRespEv struct {
-	from        int
-	term        int
-	voteGranted bool
+	From        int
+	Term        int
+	VoteGranted bool
 }
 
 type StateMachine struct {
