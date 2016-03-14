@@ -9,6 +9,7 @@ import (
 	logger "log"
 	"os"
 	"strconv"
+	"time"
 )
 
 // Returns a Node object
@@ -20,11 +21,17 @@ func New(config Config) RaftNode {
 		}
 	}
 	rn := RaftNode{}
-	rn.sm = StateMachine{id: config.Id, term: 0, commitIndex: 0, state: "Follower",
-		peers: peerIds, votedFor: 0, log: make([]logEntry, 0), voteCount: 0,
+	rn.sm = &StateMachine{id: config.Id, term: 0, commitIndex: 0, state: "Follower",
+		peers: peerIds, votedFor: 0, log: make([]logEntry, 1), voteCount: 0,
 		netCh: make(chan interface{}), timeoutCh: make(chan interface{}), actionCh: make(chan interface{}),
 		clientCh: make(chan interface{}), matchIndex: map[int]int{},
-		nextIndex: map[int]int{}}
+		nextIndex: map[int]int{}, leaderId:-1}
+
+	rn.sm.log[0] = logEntry{term:0, data:[]byte("Dummy")}
+	for _, peerId := range peerIds{
+		rn.sm.matchIndex[peerId] = 0
+		rn.sm.nextIndex[peerId] = 1
+	}
 	lg, err := log.Open(config.LogDir)
 	if err != nil {
 		fmt.Errorf("Log can't be created")
@@ -45,7 +52,10 @@ func New(config Config) RaftNode {
 	go func() {
 		rn.sm.eventLoop()
 	}()
+	rn.timeoutChan = make(chan interface{})
 	rn.commitChan = make(chan CommitInfo)
+	rn.eventChan = make(chan interface{})
+
 	rn.stateStoreFile = "stateStoreFile"
 	_, err = os.Create(rn.stateStoreFile)
 	if err != nil {
@@ -108,8 +118,8 @@ func (rn *RaftNode) Shutdown() {
 func (rn *RaftNode) doActions(actions []interface{}) {
 	for _, action := range actions {
 		switch action.(type) {
-		//case Alarm:
-		//	timer := action.(Alarm)
+		case Alarm:
+			//timer := action.(Alarm)
 		case LogStore:
 			logStore := action.(LogStore)
 			rn.lg.Append(logEntry{term: logStore.term, data: logStore.data})
@@ -119,6 +129,8 @@ func (rn *RaftNode) doActions(actions []interface{}) {
 				string(stateStore.votedFor)), 0644)
 		case Send:
 			send := action.(Send)
+			logger.Println("Received send request")
+			logger.Printf("%+v\n", action)
 			switch send.event.(type) {
 			case VoteReqEv:
 				voteReq := send.event.(VoteReqEv)
@@ -127,10 +139,10 @@ func (rn *RaftNode) doActions(actions []interface{}) {
 				voteResp := send.event.(VoteRespEv)
 				rn.server.Outbox() <- &cluster.Envelope{Pid: send.peerId, Msg: voteResp}
 			case AppendEntriesReqEv:
-				appendEntrReq := send.event.(VoteReqEv)
+				appendEntrReq := send.event.(AppendEntriesReqEv)
 				rn.server.Outbox() <- &cluster.Envelope{Pid: send.peerId, Msg: appendEntrReq}
 			case AppendEntriesRespEv:
-				appendEntrRes := send.event.(VoteReqEv)
+				appendEntrRes := send.event.(AppendEntriesRespEv)
 				rn.server.Outbox() <- &cluster.Envelope{Pid: send.peerId, Msg: appendEntrRes}
 			}
 		default:
@@ -141,16 +153,18 @@ func (rn *RaftNode) doActions(actions []interface{}) {
 
 func getActionsFromSM(rn *RaftNode) []interface{} {
 	var actions []interface{}
-	for {
+	Loop: for {
 		select {
 		case action := <-rn.sm.actionCh:
 			switch action.(type) {
 			case Finish:
+				break Loop
 			default:
 				actions = append(actions, action)
 			}
 		}
 	}
+	fmt.Println(actions)
 	return actions
 }
 
@@ -158,7 +172,6 @@ func (rn *RaftNode) processEvents() {
 	for {
 		select {
 		case ev := <- rn.eventChan:
-			fmt.Println("hiii")
 			rn.sm.clientCh <- ev.(AppendEv)
 			logger.Println("Received this", ev)
 			rn.doActions(getActionsFromSM(rn))
@@ -168,6 +181,7 @@ func (rn *RaftNode) processEvents() {
 		case <-rn.timeoutChan:
 			logger.Println("Timeout occured on node")
 			rn.sm.timeoutCh <- TimeoutEv{}
+			rn.doActions(getActionsFromSM(rn))
 		}
 	}
 }
@@ -190,8 +204,11 @@ func main() {
 	go func() {
 		r1.processEvents()
 	}()
-	fmt.Println("testing")
 	//r1.Append([]byte("hi deependra"))
-	r1.timeoutChan <- timeoutTime
+	go func() {
+		r1.timeoutChan <- timeoutTime
+	}()
+
+	time.Sleep(time.Duration(1)*time.Second)
 	fmt.Println("sent")
 }

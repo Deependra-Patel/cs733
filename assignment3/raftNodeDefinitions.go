@@ -10,7 +10,7 @@ type RaftNode struct {
 	eventChan      chan interface{}
 	timeoutChan    chan interface{}
 	commitChan     chan CommitInfo
-	sm             StateMachine
+	sm             *StateMachine
 	lg             *log.Log
 	server         cluster.Server
 	stateStoreFile string
