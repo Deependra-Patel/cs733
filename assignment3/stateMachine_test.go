@@ -247,20 +247,20 @@ func TestVoteReq(t *testing.T) {
 	//testing for term<sm.term
 	sm.netCh <- VoteReqEv{Term: sm.term - 1, CandidateId: sm.peers[0]}
 	expectedActions := []interface{}{
-		Send{peerId: initialSm.peers[0], event: VoteRespEv{Term: initialSm.term,
+		Send{peerId: initialSm.peers[0], event: VoteRespEv{Term: initialSm.term-1,
 			From: initialSm.id, VoteGranted: false}}}
 	expectActions(t, errorMessage, sm, expectedActions)
 	<- sm.actionCh //For dummy Finish
 	//term is greater but log not up to date
 	sm.netCh <- VoteReqEv{Term: sm.term + 1, CandidateId: sm.peers[0], LastLogIndex: 5, LastLogTerm: 1}
 	expectedActions = []interface{}{
-		Send{peerId: initialSm.peers[0], event: VoteRespEv{Term: initialSm.term,
+		Send{peerId: initialSm.peers[0], event: VoteRespEv{Term: initialSm.term+1,
 			From: initialSm.id, VoteGranted: false}}}
 	expectActions(t, errorMessage, sm, expectedActions)
 	<- sm.actionCh //For dummy Finish
 	sm.netCh <- VoteReqEv{Term: sm.term + 1, CandidateId: sm.peers[0], LastLogIndex: 2, LastLogTerm: 2}
 	expectedActions = []interface{}{
-		Send{peerId: initialSm.peers[0], event: VoteRespEv{Term: initialSm.term,
+		Send{peerId: initialSm.peers[0], event: VoteRespEv{Term: initialSm.term+1,
 			From: initialSm.id, VoteGranted: false}}}
 	expectActions(t, errorMessage, sm, expectedActions)
 	<- sm.actionCh //For dummy Finish

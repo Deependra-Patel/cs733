@@ -80,7 +80,7 @@ func (sm *StateMachine) voteReq(voteReq VoteReqEv) []interface{} {
 				VoteRespEv{Term: sm.term, VoteGranted: true, From: sm.id}})
 		} else {
 			resp = append(resp, Send{voteReq.CandidateId,
-				VoteRespEv{Term: sm.term, VoteGranted: false, From: sm.id}})
+				VoteRespEv{Term: voteReq.Term, VoteGranted: false, From: sm.id}})
 		}
 	case "Candidate":
 		if sm.term < voteReq.Term {
@@ -100,12 +100,12 @@ func (sm *StateMachine) voteReq(voteReq VoteReqEv) []interface{} {
 			}
 		} else {
 			resp = append(resp, Send{voteReq.CandidateId,
-				VoteRespEv{Term: sm.term, VoteGranted: false, From: sm.id}})
+				VoteRespEv{Term: voteReq.Term, VoteGranted: false, From: sm.id}})
 		}
 	case "Leader":
 		if sm.term >= voteReq.Term {
 			resp = append(resp, Send{voteReq.CandidateId,
-				VoteRespEv{Term: sm.term, VoteGranted: false, From: sm.id}})
+				VoteRespEv{Term: voteReq.Term, VoteGranted: false, From: sm.id}})
 			resp = append(resp, Send{voteReq.CandidateId, AppendEntriesReqEv{sm.term,
 				sm.id, sm.nextIndex[voteReq.CandidateId] - 1, sm.log[sm.nextIndex[voteReq.CandidateId]-1].Term,
 				sm.log[sm.nextIndex[voteReq.CandidateId]:], sm.commitIndex}})
