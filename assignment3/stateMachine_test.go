@@ -14,7 +14,7 @@ func TestAppend(t *testing.T) {
 	sm.clientCh <- AppendEv{data: data}
 	response := <-sm.actionCh
 	expect(t, errorMessage, response, Commit{index: -1, data: data, err: "ERR_NOT_LEADER"})
-	<- sm.actionCh //For dummy Finish
+	<-sm.actionCh //For dummy Finish
 	checkEmptyChannel(t, errorMessage, sm)
 
 	sm = getSampleSM("Candidate")
@@ -22,7 +22,7 @@ func TestAppend(t *testing.T) {
 	sm.clientCh <- AppendEv{data: data}
 	response = <-sm.actionCh
 	expect(t, errorMessage, response, Commit{index: -1, data: data, err: "ERR_NOT_LEADER"})
-	<- sm.actionCh //For dummy Finish
+	<-sm.actionCh //For dummy Finish
 	checkEmptyChannel(t, errorMessage, sm)
 
 	sm = getSampleSM("Leader")
@@ -41,7 +41,7 @@ func TestAppend(t *testing.T) {
 					logEntry{initialSm.term, data}),
 				LeaderCommit: initialSm.commitIndex}})
 	}
-	<- sm.actionCh //For dummy Finish
+	<-sm.actionCh //For dummy Finish
 	checkEmptyChannel(t, errorMessage, sm)
 }
 
@@ -64,7 +64,7 @@ func TestTimeout(t *testing.T) {
 			Term: initialSm.term + 1, CandidateId: initialSm.id, LastLogIndex: len(initialSm.log) - 1,
 			LastLogTerm: initialSm.log[len(initialSm.log)-1].Term}})
 	}
-	<- sm.actionCh //For dummy Finish
+	<-sm.actionCh //For dummy Finish
 	checkEmptyChannel(t, errorMessage, sm)
 
 	errorMessage = "TestTimeoutCandidate"
@@ -79,7 +79,7 @@ func TestTimeout(t *testing.T) {
 	expect(t, errorMessage, response, StateStore{currentTerm: initialSm.term + 1, votedFor: initialSm.id})
 	response = <-sm.actionCh
 	response1 := response.(Alarm)
-	if response1.t < sm.ElectionTimeout || response1.t > 2*sm.ElectionTimeout{
+	if response1.t < sm.ElectionTimeout || response1.t > 2*sm.ElectionTimeout {
 		t.Error("Election timeout for candidate not chosen correctly")
 	}
 	for _, peer := range initialSm.peers {
@@ -88,7 +88,7 @@ func TestTimeout(t *testing.T) {
 			Term: initialSm.term + 1, CandidateId: initialSm.id, LastLogIndex: len(initialSm.log) - 1,
 			LastLogTerm: initialSm.log[len(initialSm.log)-1].Term}})
 	}
-	<- sm.actionCh //For dummy Finish
+	<-sm.actionCh //For dummy Finish
 	checkEmptyChannel(t, errorMessage, sm)
 
 	errorMessage = "TestTimeoutLeader"
@@ -114,7 +114,7 @@ func TestTimeout(t *testing.T) {
 				LeaderCommit: initialSm.commitIndex}})
 		}
 	}
-	<- sm.actionCh //For dummy Finish
+	<-sm.actionCh //For dummy Finish
 	checkEmptyChannel(t, errorMessage, sm)
 }
 
@@ -128,7 +128,7 @@ func TestAppendEntriesReq(t *testing.T) {
 		Send{peerId: initialSm.peers[0],
 			event: AppendEntriesRespEv{From: initialSm.id, Term: initialSm.term, Success: false}}}
 	expectActions(t, errorMessage, sm, expectedActions)
-	<- sm.actionCh //For dummy Finish
+	<-sm.actionCh //For dummy Finish
 
 	//check for higher term
 	logEntries := []logEntry{logEntry{Term: initialSm.term + 2, Data: []byte("abd")},
@@ -141,7 +141,7 @@ func TestAppendEntriesReq(t *testing.T) {
 		Send{peerId: initialSm.peers[0],
 			event: AppendEntriesRespEv{From: initialSm.id, Term: initialSm.term + 2, Success: false}}}
 	expectActions(t, errorMessage, sm, expectedActions)
-	<- sm.actionCh //For dummy Finish
+	<-sm.actionCh //For dummy Finish
 
 	sm.netCh <- AppendEntriesReqEv{Term: initialSm.term + 2, LeaderId: initialSm.peers[0],
 		PrevLogIndex: 3, PrevLogTerm: 2, Entries: logEntries, LeaderCommit: 4}
@@ -152,7 +152,7 @@ func TestAppendEntriesReq(t *testing.T) {
 		Send{peerId: initialSm.peers[0],
 			event: AppendEntriesRespEv{From: initialSm.id, Term: initialSm.term + 2, Success: true}}}
 	expectActions(t, errorMessage, sm, expectedActions)
-	<- sm.actionCh //For dummy Finish
+	<-sm.actionCh //For dummy Finish
 
 	sm = getSampleSM("Candidate")
 	initialSm = getSampleSM("Candidate")
@@ -162,7 +162,7 @@ func TestAppendEntriesReq(t *testing.T) {
 		Send{peerId: initialSm.peers[0],
 			event: AppendEntriesRespEv{From: initialSm.id, Term: initialSm.term, Success: false}}}
 	expectActions(t, errorMessage, sm, expectedActions)
-	<- sm.actionCh //For dummy Finish
+	<-sm.actionCh //For dummy Finish
 
 	sm.netCh <- AppendEntriesReqEv{Term: initialSm.term + 1, LeaderId: initialSm.peers[0],
 		PrevLogIndex: 3, PrevLogTerm: 2, Entries: logEntries, LeaderCommit: 4}
@@ -174,7 +174,7 @@ func TestAppendEntriesReq(t *testing.T) {
 		Send{peerId: initialSm.peers[0],
 			event: AppendEntriesRespEv{From: initialSm.id, Term: initialSm.term + 1, Success: true}}}
 	expectActions(t, errorMessage, sm, expectedActions)
-	<- sm.actionCh //For dummy Finish
+	<-sm.actionCh //For dummy Finish
 
 	expect(t, errorMessage, sm.state, "Follower")
 
@@ -186,7 +186,7 @@ func TestAppendEntriesReq(t *testing.T) {
 		Send{peerId: initialSm.peers[0],
 			event: AppendEntriesRespEv{From: initialSm.id, Term: initialSm.term, Success: false}}}
 	expectActions(t, errorMessage, sm, expectedActions)
-	<- sm.actionCh //For dummy Finish
+	<-sm.actionCh //For dummy Finish
 
 	sm.netCh <- AppendEntriesReqEv{Term: initialSm.term + 1, LeaderId: initialSm.peers[0],
 		PrevLogIndex: 3, PrevLogTerm: 2, Entries: logEntries, LeaderCommit: 4}
@@ -198,7 +198,7 @@ func TestAppendEntriesReq(t *testing.T) {
 		Send{peerId: initialSm.peers[0],
 			event: AppendEntriesRespEv{From: initialSm.id, Term: initialSm.term + 1, Success: true}}}
 	expectActions(t, errorMessage, sm, expectedActions)
-	<- sm.actionCh //For dummy Finish
+	<-sm.actionCh //For dummy Finish
 	expect(t, errorMessage, sm.state, "Follower")
 	checkEmptyChannel(t, errorMessage, sm)
 }
@@ -207,13 +207,13 @@ func TestAppendEntriesResp(t *testing.T) {
 	sm := getSampleSM("Follower")
 	sm.netCh <- AppendEntriesRespEv{Term: sm.term - 1, From: sm.peers[0], Success: false}
 	errorMessage := "TestAppendEntriesRespFollower"
-	<- sm.actionCh //For dummy Finish
+	<-sm.actionCh //For dummy Finish
 	checkEmptyChannel(t, errorMessage, sm)
 
 	sm = getSampleSM("Candidate")
 	sm.netCh <- AppendEntriesRespEv{Term: sm.term - 2, From: sm.peers[0], Success: false}
 	errorMessage = "TestAppendEntriesRespCandidate"
-	<- sm.actionCh //For dummy Finish
+	<-sm.actionCh //For dummy Finish
 	checkEmptyChannel(t, errorMessage, sm)
 
 	sm = getSampleSM("Leader")
@@ -225,17 +225,17 @@ func TestAppendEntriesResp(t *testing.T) {
 		Send{peerId: initialSm.peers[0], event: AppendEntriesReqEv{Term: initialSm.term, LeaderId: initialSm.id,
 			PrevLogIndex: 1, PrevLogTerm: 1, Entries: initialSm.log[2:], LeaderCommit: initialSm.commitIndex}}}
 	expectActions(t, errorMessage, sm, expectedActions)
-	<- sm.actionCh //For dummy Finish
+	<-sm.actionCh //For dummy Finish
 	////commit case
 	checkEmptyChannel(t, errorMessage, sm)
 	sm.netCh <- AppendEntriesRespEv{From: 4, Term: initialSm.term, Success: true}
-	<- sm.actionCh //For dummy Finish
+	<-sm.actionCh //For dummy Finish
 	sm.netCh <- AppendEntriesRespEv{From: 5, Term: initialSm.term, Success: true}
 	expectedActions = []interface{}{
 		Commit{index: 2, data: initialSm.log[2].Data},
 	}
 	expectActions(t, errorMessage, sm, expectedActions)
-	<- sm.actionCh //For dummy Finish
+	<-sm.actionCh //For dummy Finish
 	expect(t, errorMessage, sm.commitIndex, 2)
 	checkEmptyChannel(t, errorMessage, sm)
 }
@@ -250,20 +250,20 @@ func TestVoteReq(t *testing.T) {
 		Send{peerId: initialSm.peers[0], event: VoteRespEv{Term: initialSm.term,
 			From: initialSm.id, VoteGranted: false}}}
 	expectActions(t, errorMessage, sm, expectedActions)
-	<- sm.actionCh //For dummy Finish
+	<-sm.actionCh //For dummy Finish
 	//term is greater but log not up to date
 	sm.netCh <- VoteReqEv{Term: sm.term + 1, CandidateId: sm.peers[0], LastLogIndex: 5, LastLogTerm: 1}
 	expectedActions = []interface{}{
 		Send{peerId: initialSm.peers[0], event: VoteRespEv{Term: initialSm.term,
 			From: initialSm.id, VoteGranted: false}}}
 	expectActions(t, errorMessage, sm, expectedActions)
-	<- sm.actionCh //For dummy Finish
+	<-sm.actionCh //For dummy Finish
 	sm.netCh <- VoteReqEv{Term: sm.term + 1, CandidateId: sm.peers[0], LastLogIndex: 2, LastLogTerm: 2}
 	expectedActions = []interface{}{
 		Send{peerId: initialSm.peers[0], event: VoteRespEv{Term: initialSm.term,
 			From: initialSm.id, VoteGranted: false}}}
 	expectActions(t, errorMessage, sm, expectedActions)
-	<- sm.actionCh //For dummy Finish
+	<-sm.actionCh //For dummy Finish
 
 	sm.netCh <- VoteReqEv{Term: sm.term + 1, CandidateId: sm.peers[0], LastLogIndex: 3, LastLogTerm: 2}
 	expectedActions = []interface{}{
@@ -271,7 +271,7 @@ func TestVoteReq(t *testing.T) {
 		Send{peerId: initialSm.peers[0], event: VoteRespEv{Term: initialSm.term + 1,
 			From: initialSm.id, VoteGranted: true}}}
 	expectActions(t, errorMessage, sm, expectedActions)
-	<- sm.actionCh //For dummy Finish
+	<-sm.actionCh //For dummy Finish
 
 	sm.netCh <- VoteReqEv{Term: sm.term + 1, CandidateId: sm.peers[0], LastLogIndex: 1, LastLogTerm: 3}
 	expectedActions = []interface{}{
@@ -279,7 +279,7 @@ func TestVoteReq(t *testing.T) {
 		Send{peerId: initialSm.peers[0], event: VoteRespEv{Term: initialSm.term + 2,
 			From: initialSm.id, VoteGranted: true}}}
 	expectActions(t, errorMessage, sm, expectedActions)
-	<- sm.actionCh //For dummy Finish
+	<-sm.actionCh //For dummy Finish
 
 	sm = getSampleSM("Candidate")
 	initialSm = getSampleSM("Candidate")
@@ -290,7 +290,7 @@ func TestVoteReq(t *testing.T) {
 		Send{peerId: initialSm.peers[0], event: VoteRespEv{Term: initialSm.term,
 			From: initialSm.id, VoteGranted: false}}}
 	expectActions(t, errorMessage, sm, expectedActions)
-	<- sm.actionCh //For dummy Finish
+	<-sm.actionCh //For dummy Finish
 
 	//term is greater but log not up to date
 	sm.netCh <- VoteReqEv{Term: sm.term + 1, CandidateId: sm.peers[0], LastLogIndex: 5, LastLogTerm: 1}
@@ -299,7 +299,7 @@ func TestVoteReq(t *testing.T) {
 		Send{peerId: initialSm.peers[0], event: VoteRespEv{Term: initialSm.term + 1,
 			From: initialSm.id, VoteGranted: false}}}
 	expectActions(t, errorMessage, sm, expectedActions)
-	<- sm.actionCh //For dummy Finish
+	<-sm.actionCh //For dummy Finish
 	expect(t, errorMessage, sm.state, "Follower")
 
 	sm = getSampleSM("Candidate")
@@ -310,7 +310,7 @@ func TestVoteReq(t *testing.T) {
 		Send{peerId: initialSm.peers[0], event: VoteRespEv{Term: initialSm.term + 1,
 			From: initialSm.id, VoteGranted: false}}}
 	expectActions(t, errorMessage, sm, expectedActions)
-	<- sm.actionCh //For dummy Finish
+	<-sm.actionCh //For dummy Finish
 	expect(t, errorMessage, sm.state, "Follower")
 
 	sm = getSampleSM("Candidate")
@@ -321,7 +321,7 @@ func TestVoteReq(t *testing.T) {
 		Send{peerId: initialSm.peers[0], event: VoteRespEv{Term: initialSm.term + 1,
 			From: initialSm.id, VoteGranted: true}}}
 	expectActions(t, errorMessage, sm, expectedActions)
-	<- sm.actionCh //For dummy Finish
+	<-sm.actionCh //For dummy Finish
 	expect(t, errorMessage, sm.state, "Follower")
 
 	sm = getSampleSM("Candidate")
@@ -332,7 +332,7 @@ func TestVoteReq(t *testing.T) {
 		Send{peerId: initialSm.peers[0], event: VoteRespEv{Term: initialSm.term + 1,
 			From: initialSm.id, VoteGranted: true}}}
 	expectActions(t, errorMessage, sm, expectedActions)
-	<- sm.actionCh //For dummy Finish
+	<-sm.actionCh //For dummy Finish
 	expect(t, errorMessage, sm.state, "Follower")
 
 	sm = getSampleSM("Leader")
@@ -346,7 +346,7 @@ func TestVoteReq(t *testing.T) {
 		Send{sm.peers[0], AppendEntriesReqEv{initialSm.term,
 			initialSm.id, 1, 1, initialSm.log[2:], initialSm.commitIndex}}}
 	expectActions(t, errorMessage, sm, expectedActions)
-	<- sm.actionCh //For dummy Finish
+	<-sm.actionCh //For dummy Finish
 
 	//term is greater but log not up to date
 	sm.netCh <- VoteReqEv{Term: sm.term + 1, CandidateId: sm.peers[0], LastLogIndex: 5, LastLogTerm: 1}
@@ -355,7 +355,7 @@ func TestVoteReq(t *testing.T) {
 		Send{peerId: initialSm.peers[0], event: VoteRespEv{Term: initialSm.term + 1,
 			From: initialSm.id, VoteGranted: false}}}
 	expectActions(t, errorMessage, sm, expectedActions)
-	<- sm.actionCh //For dummy Finish
+	<-sm.actionCh //For dummy Finish
 	expect(t, errorMessage, sm.state, "Follower")
 	sm = getSampleSM("Leader")
 	initialSm = getSampleSM("Leader")
@@ -365,7 +365,7 @@ func TestVoteReq(t *testing.T) {
 		Send{peerId: initialSm.peers[0], event: VoteRespEv{Term: initialSm.term + 1,
 			From: initialSm.id, VoteGranted: false}}}
 	expectActions(t, errorMessage, sm, expectedActions)
-	<- sm.actionCh //For dummy Finish
+	<-sm.actionCh //For dummy Finish
 	expect(t, errorMessage, sm.state, "Follower")
 	sm = getSampleSM("Leader")
 	initialSm = getSampleSM("Leader")
@@ -375,7 +375,7 @@ func TestVoteReq(t *testing.T) {
 		Send{peerId: initialSm.peers[0], event: VoteRespEv{Term: initialSm.term + 1,
 			From: initialSm.id, VoteGranted: true}}}
 	expectActions(t, errorMessage, sm, expectedActions)
-	<- sm.actionCh //For dummy Finish
+	<-sm.actionCh //For dummy Finish
 	expect(t, errorMessage, sm.state, "Follower")
 	sm = getSampleSM("Leader")
 	initialSm = getSampleSM("Leader")
@@ -385,7 +385,7 @@ func TestVoteReq(t *testing.T) {
 		Send{peerId: initialSm.peers[0], event: VoteRespEv{Term: initialSm.term + 1,
 			From: initialSm.id, VoteGranted: true}}}
 	expectActions(t, errorMessage, sm, expectedActions)
-	<- sm.actionCh //For dummy Finish
+	<-sm.actionCh //For dummy Finish
 	expect(t, errorMessage, sm.state, "Follower")
 
 	checkEmptyChannel(t, errorMessage, sm)
@@ -395,7 +395,7 @@ func TestVoteResp(t *testing.T) {
 	sm := getSampleSM("Follower")
 	sm.netCh <- VoteRespEv{Term: sm.term - 1, VoteGranted: true}
 	errorMessage := "TestVoteRespFollower"
-	<- sm.actionCh //For dummy Finish
+	<-sm.actionCh //For dummy Finish
 	checkEmptyChannel(t, errorMessage, sm)
 
 	sm = getSampleSM("Candidate")
@@ -403,12 +403,11 @@ func TestVoteResp(t *testing.T) {
 	errorMessage = "TestVoteRespCandidate"
 	sm.netCh <- VoteRespEv{Term: sm.term, VoteGranted: true}
 	expect(t, errorMessage, "Candidate", sm.state)
-	<- sm.actionCh //For dummy Finish
+	<-sm.actionCh //For dummy Finish
 	sm.netCh <- VoteRespEv{Term: sm.term, VoteGranted: false}
 	expect(t, errorMessage, "Candidate", sm.state)
-	<- sm.actionCh //For dummy Finish
+	<-sm.actionCh //For dummy Finish
 	checkEmptyChannel(t, errorMessage, sm)
-
 
 	sm.netCh <- VoteRespEv{Term: sm.term, VoteGranted: true}
 	expect(t, errorMessage, "Leader", sm.state)
@@ -423,13 +422,13 @@ func TestVoteResp(t *testing.T) {
 			PrevLogTerm: initialSm.log[len(initialSm.log)-1].Term, Entries: nil,
 			LeaderCommit: initialSm.commitIndex}})
 	}
-	<- sm.actionCh //For dummy Finish
+	<-sm.actionCh //For dummy Finish
 	checkEmptyChannel(t, errorMessage, sm)
 
 	sm = getSampleSM("Leader")
 	sm.netCh <- VoteRespEv{Term: sm.term, VoteGranted: true}
 	errorMessage = "TestVoteRespLeader"
-	<- sm.actionCh //For dummy Finish
+	<-sm.actionCh //For dummy Finish
 	checkEmptyChannel(t, errorMessage, sm)
 
 }
@@ -468,8 +467,8 @@ func getSampleSM(state string) *StateMachine {
 		votedFor: 0, log: getSampleLog(), voteCount: 1,
 		netCh: make(chan interface{}), timeoutCh: make(chan interface{}), actionCh: make(chan interface{}),
 		clientCh: make(chan interface{}), matchIndex: map[int]int{1: 1, 3: 0, 4: 1, 5: 1},
-		nextIndex: map[int]int{1: 2, 3: 1, 4: 2, 5: 2}, ElectionTimeout:time.Second*time.Duration(2),
-		HeartbeatTimeout:time.Second*time.Duration(1)}
+		nextIndex: map[int]int{1: 2, 3: 1, 4: 2, 5: 2}, ElectionTimeout: time.Second * time.Duration(2),
+		HeartbeatTimeout: time.Second * time.Duration(1)}
 	go func() {
 		sm.eventLoop()
 	}()

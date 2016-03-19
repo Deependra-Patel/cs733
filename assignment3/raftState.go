@@ -136,7 +136,7 @@ func (sm *StateMachine) voteResp(voteResp VoteRespEv) []interface{} {
 		if sm.term <= voteResp.Term {
 			if voteResp.VoteGranted {
 				println("ERROR: Inconsistent Input")
-			} else if sm.term < voteResp.Term{
+			} else if sm.term < voteResp.Term {
 				sm.term = voteResp.Term
 				resp = append(resp, StateStore{sm.term, sm.votedFor})
 			}
@@ -183,7 +183,7 @@ func (sm *StateMachine) timeout() []interface{} {
 		sm.votedFor = sm.id
 		resp = append(resp, StateStore{sm.term, sm.votedFor})
 		rand.Seed(time.Now().UTC().UnixNano())
-		resp = append(resp, Alarm{sm.ElectionTimeout+time.Duration(rand.Int63n(sm.ElectionTimeout.Nanoseconds()))})
+		resp = append(resp, Alarm{sm.ElectionTimeout + time.Duration(rand.Int63n(sm.ElectionTimeout.Nanoseconds()))})
 		for _, peer := range sm.peers {
 			resp = append(resp, Send{peer, VoteReqEv{Term: sm.term, CandidateId: sm.id,
 				LastLogIndex: len(sm.log) - 1, LastLogTerm: sm.log[len(sm.log)-1].Term}})
@@ -211,7 +211,7 @@ func (sm *StateMachine) appendEntriesReq(appendEntries AppendEntriesReqEv) []int
 			resp = append(resp, Alarm{t: sm.ElectionTimeout})
 			if len(sm.log) > appendEntries.PrevLogIndex &&
 				sm.log[appendEntries.PrevLogIndex].Term == appendEntries.PrevLogTerm {
-				sm.log = append(sm.log[:appendEntries.PrevLogIndex +1], appendEntries.Entries...)
+				sm.log = append(sm.log[:appendEntries.PrevLogIndex+1], appendEntries.Entries...)
 				index := appendEntries.PrevLogIndex + 1
 				i := 0
 				for i < len(appendEntries.Entries) {
@@ -246,7 +246,7 @@ func (sm *StateMachine) appendEntriesReq(appendEntries AppendEntriesReqEv) []int
 			resp = append(resp, Alarm{t: sm.ElectionTimeout})
 			if len(sm.log) > appendEntries.PrevLogIndex &&
 				sm.log[appendEntries.PrevLogIndex].Term == appendEntries.PrevLogTerm {
-				sm.log = append(sm.log[:appendEntries.PrevLogIndex +1], appendEntries.Entries...)
+				sm.log = append(sm.log[:appendEntries.PrevLogIndex+1], appendEntries.Entries...)
 				index := appendEntries.PrevLogIndex + 1
 				i := 0
 				for i < len(appendEntries.Entries) {
@@ -292,7 +292,7 @@ func (sm *StateMachine) appendEntriesResp(appendEntriesResp AppendEntriesRespEv)
 						count++
 					}
 				}
-				if count > (len(sm.peers) + 1) / 2 {
+				if count > (len(sm.peers)+1)/2 {
 					index := sm.commitIndex + 1
 					for index <= newIndex {
 						resp = append(resp, Commit{index: index, data: sm.log[index].Data, err: ""})

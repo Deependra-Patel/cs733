@@ -7,13 +7,12 @@ import (
 	"github.com/cs733-iitb/log"
 	"io/ioutil"
 	logger "log"
-	"strconv"
-	"time"
-	"sync"
-	"strings"
 	"os"
+	"strconv"
+	"strings"
+	"sync"
+	"time"
 )
-
 
 // Returns a Node object
 func New(config Config) RaftNode {
@@ -28,17 +27,17 @@ func New(config Config) RaftNode {
 		peers: peerIds, votedFor: 0, log: make([]logEntry, 0), voteCount: 0,
 		netCh: make(chan interface{}), timeoutCh: make(chan interface{}), actionCh: make(chan interface{}),
 		clientCh: make(chan interface{}), matchIndex: map[int]int{},
-		nextIndex: map[int]int{}, leaderId:-1, HeartbeatTimeout:config.HeartbeatTimeout,
-		ElectionTimeout:config.ElectionTimeout}
+		nextIndex: map[int]int{}, leaderId: -1, HeartbeatTimeout: config.HeartbeatTimeout,
+		ElectionTimeout: config.ElectionTimeout}
 
 	//stateStore file
 	rn.stateStoreFile = "stateStoreFile" + strconv.Itoa(config.Id)
 	contents, err := ioutil.ReadFile(rn.stateStoreFile)
-	if (len(contents) != 0){
+	if len(contents) != 0 {
 		state_VotedFor := strings.Split(string(contents), " ")
 		term, err1 := strconv.Atoi(state_VotedFor[0])
 		votedFor, err2 := strconv.Atoi(state_VotedFor[1])
-		if (err1 != nil || err2 != nil){
+		if err1 != nil || err2 != nil {
 			logger.Panic("Can't convert term/votedFor to int")
 		} else {
 			rn.sm.votedFor = votedFor
@@ -49,7 +48,7 @@ func New(config Config) RaftNode {
 	}
 
 	//setting log
-	for _, peerId := range peerIds{
+	for _, peerId := range peerIds {
 		rn.sm.matchIndex[peerId] = 0
 		rn.sm.nextIndex[peerId] = 1
 	}
@@ -60,18 +59,18 @@ func New(config Config) RaftNode {
 	rn.lg = lg
 	rn.lg.RegisterSampleEntry(logEntry{})
 	lastIndex := int(rn.lg.GetLastIndex())
-	if (lastIndex != -1){
-		for i:=0; i<=lastIndex; i++{
+	if lastIndex != -1 {
+		for i := 0; i <= lastIndex; i++ {
 			data, err := rn.lg.Get(int64(i))
 			fmt.Println(data, err)
-			if (err != nil){
+			if err != nil {
 				logger.Panic("Read from log not possible")
 			}
 			rn.sm.log = append(rn.sm.log, data.(logEntry))
 		}
 	} else {
-		err = rn.lg.Append(logEntry{Term:0, Data:[]byte("Dummy")})
-		rn.sm.log = append(rn.sm.log, logEntry{Term:0, Data:[]byte("Dummy")})
+		err = rn.lg.Append(logEntry{Term: 0, Data: []byte("Dummy")})
+		rn.sm.log = append(rn.sm.log, logEntry{Term: 0, Data: []byte("Dummy")})
 		if err != nil {
 			logger.Println("Couldn't write to log", err)
 		}
@@ -98,7 +97,7 @@ func New(config Config) RaftNode {
 	rn.lock = &sync.Mutex{}
 
 	//configuring timer
-	timerFunc := func(rn *RaftNode) func(){
+	timerFunc := func(rn *RaftNode) func() {
 		return func() {
 			rn.timeoutChan <- TimeoutEv{}
 		}
@@ -171,10 +170,10 @@ func (rn *RaftNode) Shutdown() {
 }
 
 // Deletes log folder and the stateStore file
-func (rn *RaftNode) Delete(){
-	err1 := os.RemoveAll("mylog"+strconv.Itoa(rn.Id()))
-	err2 := os.Remove("stateStoreFile"+strconv.Itoa(rn.Id()))
-	if (err1 != nil || err2 != nil){
+func (rn *RaftNode) Delete() {
+	err1 := os.RemoveAll("mylog" + strconv.Itoa(rn.Id()))
+	err2 := os.Remove("stateStoreFile" + strconv.Itoa(rn.Id()))
+	if err1 != nil || err2 != nil {
 		logger.Panic("Couldn't delete files/folder", err1, err2)
 	}
 }
@@ -185,7 +184,7 @@ func (rn *RaftNode) doActions(actions []interface{}) {
 		case Alarm:
 			alarm := action.(Alarm)
 			logger.Printf("ID:%v Setting Alarm.. ", rn.Id(), alarm.t.Nanoseconds())
-			timerFunc := func(rn *RaftNode) func(){
+			timerFunc := func(rn *RaftNode) func() {
 				return func() {
 					rn.timeoutChan <- TimeoutEv{}
 				}
@@ -203,7 +202,7 @@ func (rn *RaftNode) doActions(actions []interface{}) {
 			logger.Printf("ID:%v Storing current term, votedfor.. %+v\n", rn.Id(), stateStore)
 			err := ioutil.WriteFile(rn.stateStoreFile, []byte(strconv.Itoa(stateStore.currentTerm)+" "+
 				strconv.Itoa(stateStore.votedFor)), 0777)
-			if (err != nil){
+			if err != nil {
 				logger.Panic("Can't write to stateStore file", err)
 			}
 		case Send:
@@ -226,13 +225,12 @@ func (rn *RaftNode) doActions(actions []interface{}) {
 		case Commit:
 			commit := action.(Commit)
 			logger.Printf("ID:%v Committing.. %+v", rn.Id(), commit)
-			rn.commitChan <- CommitInfo{data:commit.data, err:commit.err, Index:commit.index}
+			rn.commitChan <- CommitInfo{data: commit.data, err: commit.err, Index: commit.index}
 		default:
 			println("Unrecognized")
 		}
 	}
 }
-
 
 func getActionsFromSM(rn *RaftNode, event interface{}) []interface{} {
 	rn.lock.Lock()
@@ -242,10 +240,10 @@ func getActionsFromSM(rn *RaftNode, event interface{}) []interface{} {
 }
 
 func (rn *RaftNode) processEvents() {
-	infiLoop:
+infiLoop:
 	for {
 		select {
-		case ev := <- rn.eventChan:
+		case ev := <-rn.eventChan:
 			switch ev.(type) {
 			case shutdownEvent:
 				break infiLoop
@@ -263,6 +261,6 @@ func (rn *RaftNode) processEvents() {
 	}
 }
 
-func main(){
+func main() {
 
 }

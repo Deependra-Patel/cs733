@@ -3,8 +3,8 @@ package main
 import (
 	"github.com/cs733-iitb/cluster"
 	"github.com/cs733-iitb/log"
-	"time"
 	"sync"
+	"time"
 )
 
 type RaftNode struct {
@@ -16,8 +16,8 @@ type RaftNode struct {
 	lg             *log.Log
 	server         cluster.Server
 	stateStoreFile string
-	timer *time.Timer
-	lock *sync.Mutex
+	timer          *time.Timer
+	lock           *sync.Mutex
 }
 
 type Node interface {
@@ -62,6 +62,5 @@ type NetConfig struct {
 }
 
 //Event sent to stop infinite loop
-type shutdownEvent struct{
-
+type shutdownEvent struct {
 }

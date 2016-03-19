@@ -47,23 +47,23 @@ type VoteRespEv struct {
 }
 
 type StateMachine struct {
-	id          int // server id
-	leaderId    int //leader id
-	state       string
-	peers       []int // other server ids
-	term        int
-	voteCount   int
-	ElectionTimeout time.Duration
+	id               int // server id
+	leaderId         int //leader id
+	state            string
+	peers            []int // other server ids
+	term             int
+	voteCount        int
+	ElectionTimeout  time.Duration
 	HeartbeatTimeout time.Duration
-	log         []logEntry
-	votedFor    int
-	commitIndex int
-	nextIndex   map[int]int
-	matchIndex  map[int]int
-	actionCh    chan interface{}
-	netCh       chan interface{}
-	timeoutCh   chan interface{}
-	clientCh    chan interface{}
+	log              []logEntry
+	votedFor         int
+	commitIndex      int
+	nextIndex        map[int]int
+	matchIndex       map[int]int
+	actionCh         chan interface{}
+	netCh            chan interface{}
+	timeoutCh        chan interface{}
+	clientCh         chan interface{}
 }
 
 type Commit struct {
