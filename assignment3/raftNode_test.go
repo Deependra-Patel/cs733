@@ -6,6 +6,7 @@ import (
 	"time"
 	"strconv"
 	"fmt"
+	"sync"
 )
 
 func TestBasic(t *testing.T) {
@@ -16,18 +17,26 @@ func TestBasic(t *testing.T) {
 	ldr.Append([]byte("foo"))
 	time.Sleep(time.Duration(3)*time.Second)
 
-	 ci := <- ldr.CommitChannel()
-	if ci.err != "" {t.Fatal(ci.err)}
-	if string(ci.data) != "foo" {
-		t.Fatal("Got different data")
+	var wg sync.WaitGroup
+	wg.Add(len(rafts))
+	for _, node := range rafts{
+		go func(node RaftNode){
+			defer wg.Done()
+			ci := <- node.CommitChannel()
+			if ci.err != "" {
+				t.Fatal(ci.err)
+			}
+			fmt.Println(string(ci.data))
+			if string(ci.data) != "foo" {
+				t.Fatal("Got different data")
+			}
+			err, data := node.Get(1)
+			if (err != nil || string(data)!= "foo"){
+				t.Fatal("Expected message on log also")
+			}
+		}(node)
 	}
-
-	for _, node:= range rafts {
-		err, data := node.Get(1)
-		if (err != nil || string(data)!= "foo"){
-			t.Fatal("Expected message on all nodes")
-		}
-	}
+	wg.Wait()
 }
 
 func getLeader(t *testing.T, rafts []RaftNode) RaftNode{

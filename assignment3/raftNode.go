@@ -135,6 +135,7 @@ func (rn *RaftNode) LeaderId() int {
 
 // Signal to shut down all goroutines, stop sockets, flush log and close it, cancel timers.
 func (rn *RaftNode) Shutdown() {
+	rn.timer.Stop()
 	rn.lg.Close()
 	rn.server.Close()
 }

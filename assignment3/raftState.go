@@ -222,7 +222,12 @@ func (sm *StateMachine) appendEntriesReq(appendEntries AppendEntriesReqEv) []int
 				resp = append(resp, Send{appendEntries.LeaderId,
 					AppendEntriesRespEv{From: sm.id, Term: sm.term, Success: true}})
 				if appendEntries.LeaderCommit > sm.commitIndex {
+					index := sm.commitIndex + 1
 					sm.commitIndex = min(appendEntries.LeaderCommit, len(sm.log)-1)
+					for index <= sm.commitIndex {
+						resp = append(resp, Commit{index: index, data: sm.log[index].Data, err: ""})
+						index++
+					}
 				}
 			} else {
 				resp = append(resp, Send{appendEntries.LeaderId,
@@ -252,7 +257,12 @@ func (sm *StateMachine) appendEntriesReq(appendEntries AppendEntriesReqEv) []int
 				resp = append(resp, Send{appendEntries.LeaderId,
 					AppendEntriesRespEv{From: sm.id, Term: sm.term, Success: true}})
 				if appendEntries.LeaderCommit > sm.commitIndex {
+					index := sm.commitIndex + 1
 					sm.commitIndex = min(appendEntries.LeaderCommit, len(sm.log)-1)
+					for index <= sm.commitIndex {
+						resp = append(resp, Commit{index: index, data: sm.log[index].Data, err: ""})
+						index++
+					}
 				}
 			} else {
 				resp = append(resp, Send{appendEntries.LeaderId,
