@@ -36,8 +36,9 @@ func New(config Config) RaftNode {
 		rn.sm.nextIndex[peerId] = 1
 	}
 	lg, err := log.Open(config.LogDir)
+	lg.TruncateToEnd(0)
 	if err != nil {
-		logger.Println("Log can't be created", err)
+		logger.Println("Log can't be opened/created", err)
 	}
 	rn.lg = lg
 	rn.lg.RegisterSampleEntry(logEntry{})
@@ -135,9 +136,11 @@ func (rn *RaftNode) LeaderId() int {
 
 // Signal to shut down all goroutines, stop sockets, flush log and close it, cancel timers.
 func (rn *RaftNode) Shutdown() {
+	rn.eventChan <- shutdownEvent{}
 	rn.timer.Stop()
 	rn.lg.Close()
 	rn.server.Close()
+	logger.Println("Succesfully shutdown ID:", rn.Id())
 }
 
 func (rn *RaftNode) doActions(actions []interface{}) {
@@ -201,13 +204,19 @@ func getActionsFromSM(rn *RaftNode, event interface{}) []interface{} {
 }
 
 func (rn *RaftNode) processEvents() {
+	infiLoop:
 	for {
 		select {
 		case ev := <- rn.eventChan:
-			logger.Printf("Append %+v\n", ev)
-			rn.doActions(getActionsFromSM(rn, ev))
+			switch ev.(type) {
+			case shutdownEvent:
+				break infiLoop
+			default:
+				logger.Printf("ID:%v Append %+v\n", rn.Id(), ev)
+				rn.doActions(getActionsFromSM(rn, ev))
+			}
 		case inbox := <-rn.server.Inbox():
-			logger.Printf("%v Inbox %+v\n", rn.Id(), inbox)
+			logger.Printf("ID:%v Inbox %+v\n", rn.Id(), inbox)
 			rn.doActions(getActionsFromSM(rn, inbox.Msg))
 		case <-rn.timeoutChan:
 			logger.Printf("ID:%v Timeout\n", rn.Id())

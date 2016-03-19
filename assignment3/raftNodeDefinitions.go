@@ -60,3 +60,8 @@ type NetConfig struct {
 	Host string
 	Port int
 }
+
+//Event sent to stop infinite loop
+type shutdownEvent struct{
+
+}
