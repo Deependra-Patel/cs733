@@ -80,7 +80,7 @@ func (sm *StateMachine) voteReq(voteReq VoteReqEv) []interface{} {
 				VoteRespEv{Term: sm.term, VoteGranted: true, From: sm.id}})
 		} else {
 			resp = append(resp, Send{voteReq.CandidateId,
-				VoteRespEv{Term: voteReq.Term, VoteGranted: false, From: sm.id}})
+				VoteRespEv{Term: sm.term, VoteGranted: false, From: sm.id}})
 		}
 	case "Candidate":
 		if sm.term < voteReq.Term {
@@ -100,12 +100,12 @@ func (sm *StateMachine) voteReq(voteReq VoteReqEv) []interface{} {
 			}
 		} else {
 			resp = append(resp, Send{voteReq.CandidateId,
-				VoteRespEv{Term: voteReq.Term, VoteGranted: false, From: sm.id}})
+				VoteRespEv{Term: sm.term, VoteGranted: false, From: sm.id}})
 		}
 	case "Leader":
 		if sm.term >= voteReq.Term {
 			resp = append(resp, Send{voteReq.CandidateId,
-				VoteRespEv{Term: voteReq.Term, VoteGranted: false, From: sm.id}})
+				VoteRespEv{Term: sm.term, VoteGranted: false, From: sm.id}})
 			resp = append(resp, Send{voteReq.CandidateId, AppendEntriesReqEv{sm.term,
 				sm.id, sm.nextIndex[voteReq.CandidateId] - 1, sm.log[sm.nextIndex[voteReq.CandidateId]-1].Term,
 				sm.log[sm.nextIndex[voteReq.CandidateId]:], sm.commitIndex}})
@@ -125,7 +125,6 @@ func (sm *StateMachine) voteReq(voteReq VoteReqEv) []interface{} {
 					VoteGranted: false, From: sm.id}})
 			}
 		}
-
 	}
 	return resp
 }
@@ -135,7 +134,12 @@ func (sm *StateMachine) voteResp(voteResp VoteRespEv) []interface{} {
 	switch sm.state {
 	case "Follower":
 		if sm.term <= voteResp.Term {
-			println("ERROR: Inconsistent Input")
+			if voteResp.VoteGranted {
+				println("ERROR: Inconsistent Input")
+			} else if sm.term < voteResp.Term{
+				sm.term = voteResp.Term
+				resp = append(resp, StateStore{sm.term, sm.votedFor})
+			}
 		}
 	case "Candidate":
 		if voteResp.Term == sm.term && voteResp.VoteGranted {
