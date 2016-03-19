@@ -147,12 +147,12 @@ func (sm *StateMachine) voteResp(voteResp VoteRespEv) []interface{} {
 			if sm.voteCount >= (len(sm.peers)+3)/2 {
 				sm.state = "Leader"
 				fmt.Println("LEADER ELECTED", sm.id)
-				resp = append(resp, Alarm{t: sm.HeartbeatTimeout})
-				resp = append(resp, getHeartBeatEvents(sm)...)
 				for _, peer := range sm.peers {
 					sm.nextIndex[peer] = len(sm.log)
 					sm.matchIndex[peer] = 0
 				}
+				resp = append(resp, Alarm{t: sm.HeartbeatTimeout})
+				resp = append(resp, getHeartBeatEvents(sm)...)
 			}
 		}
 	case "Leader":
@@ -283,24 +283,22 @@ func (sm *StateMachine) appendEntriesResp(appendEntriesResp AppendEntriesRespEv)
 	case "Leader":
 		if sm.term == appendEntriesResp.Term {
 			if appendEntriesResp.Success {
-				if sm.nextIndex[appendEntriesResp.From] < len(sm.log) {
-					newIndex := sm.nextIndex[appendEntriesResp.From]
-					sm.matchIndex[appendEntriesResp.From] = newIndex
-					sm.nextIndex[appendEntriesResp.From] = len(sm.log)
-					count := 1
-					for _, peer := range sm.peers {
-						if sm.matchIndex[peer] >= newIndex {
-							count++
-						}
+				newIndex := min(len(sm.log)-1, sm.nextIndex[appendEntriesResp.From])
+				sm.matchIndex[appendEntriesResp.From] = newIndex
+				sm.nextIndex[appendEntriesResp.From] = len(sm.log)
+				count := 1
+				for _, peer := range sm.peers {
+					if sm.matchIndex[peer] >= newIndex {
+						count++
 					}
-					if count > (len(sm.peers) + 1) / 2 {
-						index := sm.commitIndex + 1
-						for index <= newIndex {
-							resp = append(resp, Commit{index: index, data: sm.log[index].Data, err: ""})
-							index += 1
-						}
-						sm.commitIndex = newIndex
+				}
+				if count > (len(sm.peers) + 1) / 2 {
+					index := sm.commitIndex + 1
+					for index <= newIndex {
+						resp = append(resp, Commit{index: index, data: sm.log[index].Data, err: ""})
+						index += 1
 					}
+					sm.commitIndex = newIndex
 				}
 			} else {
 				sm.nextIndex[appendEntriesResp.From]--

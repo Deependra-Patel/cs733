@@ -416,18 +416,12 @@ func TestVoteResp(t *testing.T) {
 	expect(t, errorMessage, response, Alarm{t: sm.HeartbeatTimeout})
 	for _, peer := range sm.peers {
 		response = <-sm.actionCh
-		if len(initialSm.log) != initialSm.nextIndex[peer] {
-			expect(t, errorMessage, response, Send{peer, AppendEntriesReqEv{
-				Term: initialSm.term, LeaderId: initialSm.id, PrevLogIndex: initialSm.nextIndex[peer] - 1,
-				PrevLogTerm:  initialSm.log[initialSm.nextIndex[peer]-1].Term,
-				Entries:      initialSm.log[initialSm.nextIndex[peer]:],
-				LeaderCommit: initialSm.commitIndex}})
-		} else {
-			expect(t, errorMessage, response, Send{peer, AppendEntriesReqEv{
-				Term: initialSm.term, LeaderId: initialSm.id, PrevLogIndex: len(initialSm.log) - 1,
-				PrevLogTerm: initialSm.log[len(initialSm.log)-1].Term, Entries: nil,
-				LeaderCommit: initialSm.commitIndex}})
-		}
+		expect(t, errorMessage, sm.nextIndex[peer], len(sm.log))
+		expect(t, errorMessage, sm.matchIndex[peer], 0)
+		expect(t, errorMessage, response, Send{peer, AppendEntriesReqEv{
+			Term: initialSm.term, LeaderId: initialSm.id, PrevLogIndex: len(initialSm.log) - 1,
+			PrevLogTerm: initialSm.log[len(initialSm.log)-1].Term, Entries: nil,
+			LeaderCommit: initialSm.commitIndex}})
 	}
 	<- sm.actionCh //For dummy Finish
 	checkEmptyChannel(t, errorMessage, sm)

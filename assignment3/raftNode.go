@@ -7,10 +7,11 @@ import (
 	"github.com/cs733-iitb/log"
 	"io/ioutil"
 	logger "log"
-	"os"
 	"strconv"
 	"time"
 	"sync"
+	"strings"
+	"os"
 )
 
 
@@ -24,28 +25,59 @@ func New(config Config) RaftNode {
 	}
 	rn := RaftNode{}
 	rn.sm = &StateMachine{id: config.Id, term: 0, commitIndex: 0, state: "Follower",
-		peers: peerIds, votedFor: 0, log: make([]logEntry, 1), voteCount: 0,
+		peers: peerIds, votedFor: 0, log: make([]logEntry, 0), voteCount: 0,
 		netCh: make(chan interface{}), timeoutCh: make(chan interface{}), actionCh: make(chan interface{}),
 		clientCh: make(chan interface{}), matchIndex: map[int]int{},
 		nextIndex: map[int]int{}, leaderId:-1, HeartbeatTimeout:config.HeartbeatTimeout,
 		ElectionTimeout:config.ElectionTimeout}
 
-	rn.sm.log[0] = logEntry{Term:0, Data:[]byte("Dummy")}
+	//stateStore file
+	rn.stateStoreFile = "stateStoreFile" + strconv.Itoa(config.Id)
+	contents, err := ioutil.ReadFile(rn.stateStoreFile)
+	if (len(contents) != 0){
+		state_VotedFor := strings.Split(string(contents), " ")
+		term, err1 := strconv.Atoi(state_VotedFor[0])
+		votedFor, err2 := strconv.Atoi(state_VotedFor[1])
+		if (err1 != nil || err2 != nil){
+			logger.Panic("Can't convert term/votedFor to int")
+		} else {
+			rn.sm.votedFor = votedFor
+			rn.sm.term = term
+		}
+	} else {
+		ioutil.WriteFile(rn.stateStoreFile, []byte("0 0"), 0777)
+	}
+
+	//setting log
 	for _, peerId := range peerIds{
 		rn.sm.matchIndex[peerId] = 0
 		rn.sm.nextIndex[peerId] = 1
 	}
 	lg, err := log.Open(config.LogDir)
-	lg.TruncateToEnd(0)
 	if err != nil {
 		logger.Println("Log can't be opened/created", err)
 	}
 	rn.lg = lg
 	rn.lg.RegisterSampleEntry(logEntry{})
-	err = rn.lg.Append(logEntry{Term:0, Data:[]byte("Dummy")})
-	if err != nil{
-		logger.Println("Couldn't write to log", err)
+	lastIndex := int(rn.lg.GetLastIndex())
+	if (lastIndex != -1){
+		for i:=0; i<=lastIndex; i++{
+			data, err := rn.lg.Get(int64(i))
+			fmt.Println(data, err)
+			if (err != nil){
+				logger.Panic("Read from log not possible")
+			}
+			rn.sm.log = append(rn.sm.log, data.(logEntry))
+		}
+	} else {
+		err = rn.lg.Append(logEntry{Term:0, Data:[]byte("Dummy")})
+		rn.sm.log = append(rn.sm.log, logEntry{Term:0, Data:[]byte("Dummy")})
+		if err != nil {
+			logger.Println("Couldn't write to log", err)
+		}
 	}
+
+	//configuring server
 	serverConfig := createServerConfig(config.cluster)
 	rn.server, err = cluster.New(config.Id, serverConfig)
 	if err != nil {
@@ -58,27 +90,22 @@ func New(config Config) RaftNode {
 	gob.Register(VoteReqEv{})
 	gob.Register(VoteRespEv{})
 
+	//setting channels
 	rn.timeoutChan = make(chan interface{})
 	rn.commitChan = make(chan CommitInfo)
 	rn.eventChan = make(chan interface{})
 
 	rn.lock = &sync.Mutex{}
 
-	rn.stateStoreFile = "stateStoreFile" + strconv.Itoa(config.Id)
-	_, err = os.Create(rn.stateStoreFile)
-	if err != nil {
-		logger.Panic("Couldn't create stateStoreFile", err)
-	} else {
-		logger.Println("stateStoreFile created succesfully")
-	}
-
+	//configuring timer
 	timerFunc := func(rn *RaftNode) func(){
 		return func() {
 			rn.timeoutChan <- TimeoutEv{}
 		}
 	}(&rn)
-
 	rn.timer = time.AfterFunc(rn.sm.ElectionTimeout, timerFunc)
+	//logger.Printf("%+v", rn.sm)
+
 	return rn
 }
 
@@ -143,15 +170,23 @@ func (rn *RaftNode) Shutdown() {
 	logger.Println("Succesfully shutdown ID:", rn.Id())
 }
 
+// Deletes log folder and the stateStore file
+func (rn *RaftNode) Delete(){
+	err1 := os.RemoveAll("mylog"+strconv.Itoa(rn.Id()))
+	err2 := os.Remove("stateStoreFile"+strconv.Itoa(rn.Id()))
+	if (err1 != nil || err2 != nil){
+		logger.Panic("Couldn't delete files/folder", err1, err2)
+	}
+}
+
 func (rn *RaftNode) doActions(actions []interface{}) {
 	for _, action := range actions {
 		switch action.(type) {
 		case Alarm:
 			alarm := action.(Alarm)
-			logger.Println("Setting Alarm.. ID:", rn.Id(), alarm.t.Nanoseconds())
+			logger.Printf("ID:%v Setting Alarm.. ", rn.Id(), alarm.t.Nanoseconds())
 			timerFunc := func(rn *RaftNode) func(){
 				return func() {
-					logger.Println("Sending to timeoutChan ID: ", rn.Id())
 					rn.timeoutChan <- TimeoutEv{}
 				}
 			}(rn)
@@ -160,16 +195,20 @@ func (rn *RaftNode) doActions(actions []interface{}) {
 
 		case LogStore:
 			logStore := action.(LogStore)
-			logger.Printf("Storing in Log ID:%v %+v\n", rn.Id(), logStore)
+			logger.Printf("ID:%v Storing in Log %+v\n", rn.Id(), logStore)
 			rn.lg.TruncateToEnd(int64(logStore.index))
 			rn.lg.Append(logEntry{Term: logStore.term, Data: logStore.data})
 		case StateStore:
 			stateStore := action.(StateStore)
-			ioutil.WriteFile(rn.stateStoreFile, []byte(string(stateStore.currentTerm)+" "+
-				string(stateStore.votedFor)), 0644)
+			logger.Printf("ID:%v Storing current term, votedfor.. %+v\n", rn.Id(), stateStore)
+			err := ioutil.WriteFile(rn.stateStoreFile, []byte(strconv.Itoa(stateStore.currentTerm)+" "+
+				strconv.Itoa(stateStore.votedFor)), 0777)
+			if (err != nil){
+				logger.Panic("Can't write to stateStore file", err)
+			}
 		case Send:
 			send := action.(Send)
-			logger.Printf("Sending.. %+v\n", action)
+			logger.Printf("ID:%v Sending.. %+v\n", rn.Id(), action)
 			switch send.event.(type) {
 			case VoteReqEv:
 				voteReq := send.event.(VoteReqEv)
@@ -186,8 +225,7 @@ func (rn *RaftNode) doActions(actions []interface{}) {
 			}
 		case Commit:
 			commit := action.(Commit)
-			logger.Println(rn.sm.state)
-			logger.Println("Committing.. ID:", rn.Id())
+			logger.Printf("ID:%v Committing.. %+v", rn.Id(), commit)
 			rn.commitChan <- CommitInfo{data:commit.data, err:commit.err, Index:commit.index}
 		default:
 			println("Unrecognized")
@@ -225,64 +263,6 @@ func (rn *RaftNode) processEvents() {
 	}
 }
 
-func main() {
-	logger.SetFlags(logger.LstdFlags | logger.Lshortfile)
-	r1 := New(
-		Config{
-			cluster: []NetConfig{
-				{Id: 1, Host: "localhost", Port: 7000},
-				{Id: 4, Host: "localhost", Port: 7001},
-				{Id: 6, Host: "localhost", Port: 7002},
-			},
-			Id:               1,
-			LogDir:           "mylog1",
-			ElectionTimeout:  time.Millisecond*time.Duration(300),
-			HeartbeatTimeout: time.Millisecond*time.Duration(100),
-		})
-	r2 := New(
-		Config{
-			cluster: []NetConfig{
-				{Id: 1, Host: "localhost", Port: 7000},
-				{Id: 4, Host: "localhost", Port: 7001},
-				{Id: 6, Host: "localhost", Port: 7002},
-			},
-			Id:               4,
-			LogDir:           "mylog2",
-			ElectionTimeout:  time.Millisecond*time.Duration(300),
-			HeartbeatTimeout: time.Millisecond*time.Duration(100),
-		})
-	//r3 := New(
-	//	Config{
-	//		cluster: []NetConfig{
-	//			{Id: 1, Host: "localhost", Port: 7000},
-	//			{Id: 4, Host: "localhost", Port: 7001},
-	//			{Id: 6, Host: "localhost", Port: 7002},
-	//		},
-	//		Id:               6,
-	//		LogDir:           "mylog",
-	//		ElectionTimeout:  2,
-	//		HeartbeatTimeout: 1,
-	//	})
+func main(){
 
-	go func() {
-		r1.processEvents()
-	}()
-	go func() {
-		r2.processEvents()
-	}()
-	//time.Sleep(time.Millisecond*time.Duration(100))
-	//go func() {
-	//	r3.processEvents()
-	//}()
-	r1.Append([]byte("hi deependra"))
-	commitInfo := <- r1.commitChan
-	logger.Println(commitInfo)
-	time.Sleep(time.Millisecond*time.Duration(500))
-	r1.Append([]byte("hi deependra"))
-	commitInfo = <- r1.commitChan
-	logger.Println(commitInfo)
-	err, bt := r1.Get(2)
-	fmt.Println("-----------------------", err, string(bt));
-	//time.Sleep(time.Millisecond*time.Duration(1000))
-	fmt.Println("sent")
 }
