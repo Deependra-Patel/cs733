@@ -4,6 +4,7 @@ import (
 	"github.com/cs733-iitb/cluster"
 	"github.com/cs733-iitb/log"
 	"time"
+	"sync"
 )
 
 type RaftNode struct {
@@ -16,6 +17,7 @@ type RaftNode struct {
 	server         cluster.Server
 	stateStoreFile string
 	timer *time.Timer
+	lock *sync.Mutex
 }
 
 type Node interface {

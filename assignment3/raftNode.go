@@ -10,6 +10,7 @@ import (
 	"os"
 	"strconv"
 	"time"
+	"sync"
 )
 
 
@@ -55,12 +56,12 @@ func New(config Config) RaftNode {
 	gob.Register(AppendEntriesRespEv{})
 	gob.Register(VoteReqEv{})
 	gob.Register(VoteRespEv{})
-	go func() {
-		rn.sm.eventLoop()
-	}()
+
 	rn.timeoutChan = make(chan interface{})
 	rn.commitChan = make(chan CommitInfo)
 	rn.eventChan = make(chan interface{})
+
+	rn.lock = &sync.Mutex{}
 
 	rn.stateStoreFile = "stateStoreFile" + strconv.Itoa(config.Id)
 	_, err = os.Create(rn.stateStoreFile)
@@ -104,12 +105,18 @@ func (rn *RaftNode) CommitChannel() <-chan CommitInfo {
 // Last known committed index in the log.
 func (rn *RaftNode) CommittedIndex() int {
 	//This could be -1 until the system stabilizes.
-	return rn.sm.commitIndex
+	rn.lock.Lock()
+	commitIndex := rn.sm.commitIndex
+	rn.lock.Unlock()
+	return commitIndex
 }
 
 // Returns the data at a log index, or an error.
 func (rn *RaftNode) Get(index int) (error, []byte) {
 	itf, err := rn.lg.Get(int64(index))
+	if err != nil {
+		return err, nil
+	}
 	return err, (itf.(logEntry)).Data
 }
 
@@ -120,7 +127,10 @@ func (rn *RaftNode) Id() int {
 
 // Id of leader. -1 if unknown
 func (rn *RaftNode) LeaderId() int {
-	return rn.sm.leaderId
+	rn.lock.Lock()
+	leaderId := rn.sm.leaderId
+	rn.lock.Unlock()
+	return leaderId
 }
 
 // Signal to shut down all goroutines, stop sockets, flush log and close it, cancel timers.
@@ -137,6 +147,7 @@ func (rn *RaftNode) doActions(actions []interface{}) {
 			logger.Println("Setting Alarm.. ID:", rn.Id(), alarm.t.Nanoseconds())
 			timerFunc := func(rn *RaftNode) func(){
 				return func() {
+					logger.Println("Sending to timeoutChan ID: ", rn.Id())
 					rn.timeoutChan <- TimeoutEv{}
 				}
 			}(rn)
@@ -146,6 +157,7 @@ func (rn *RaftNode) doActions(actions []interface{}) {
 		case LogStore:
 			logStore := action.(LogStore)
 			logger.Printf("Storing in Log ID:%v %+v\n", rn.Id(), logStore)
+			rn.lg.TruncateToEnd(int64(logStore.index))
 			rn.lg.Append(logEntry{Term: logStore.term, Data: logStore.data})
 		case StateStore:
 			stateStore := action.(StateStore)
@@ -170,6 +182,7 @@ func (rn *RaftNode) doActions(actions []interface{}) {
 			}
 		case Commit:
 			commit := action.(Commit)
+			logger.Println(rn.sm.state)
 			logger.Println("Committing.. ID:", rn.Id())
 			rn.commitChan <- CommitInfo{data:commit.data, err:commit.err, Index:commit.index}
 		default:
@@ -180,31 +193,9 @@ func (rn *RaftNode) doActions(actions []interface{}) {
 
 
 func getActionsFromSM(rn *RaftNode, event interface{}) []interface{} {
-	switch event.(type) {
-	case AppendEntriesReqEv, AppendEntriesRespEv, VoteReqEv, VoteRespEv:
-		rn.sm.netCh <- event
-	case AppendEv:
-		ev := event.(AppendEv)
-		rn.sm.clientCh <- ev
-	case TimeoutEv:
-		ev := event.(TimeoutEv)
-		rn.sm.timeoutCh <- ev
-	default:
-		logger.Println("Unrecognised")
-	}
-
-	var actions []interface{}
-	Loop: for {
-		select {
-		case action := <-rn.sm.actionCh:
-			switch action.(type) {
-			case Finish:
-				break Loop
-			default:
-				actions = append(actions, action)
-			}
-		}
-	}
+	rn.lock.Lock()
+	actions := rn.sm.ProcessEvent(event)
+	rn.lock.Unlock()
 	return actions
 }
 
@@ -235,8 +226,8 @@ func main() {
 			},
 			Id:               1,
 			LogDir:           "mylog1",
-			ElectionTimeout:  time.Millisecond*time.Duration(2),
-			HeartbeatTimeout: time.Millisecond*time.Duration(1),
+			ElectionTimeout:  time.Millisecond*time.Duration(300),
+			HeartbeatTimeout: time.Millisecond*time.Duration(100),
 		})
 	r2 := New(
 		Config{
@@ -247,8 +238,8 @@ func main() {
 			},
 			Id:               4,
 			LogDir:           "mylog2",
-			ElectionTimeout:  time.Millisecond*time.Duration(2),
-			HeartbeatTimeout: time.Millisecond*time.Duration(1),
+			ElectionTimeout:  time.Millisecond*time.Duration(300),
+			HeartbeatTimeout: time.Millisecond*time.Duration(100),
 		})
 	//r3 := New(
 	//	Config{
@@ -269,12 +260,19 @@ func main() {
 	go func() {
 		r2.processEvents()
 	}()
-	time.Sleep(time.Millisecond*time.Duration(10))
+	//time.Sleep(time.Millisecond*time.Duration(100))
 	//go func() {
 	//	r3.processEvents()
 	//}()
 	r1.Append([]byte("hi deependra"))
-
-	time.Sleep(time.Millisecond*time.Duration(10))
+	commitInfo := <- r1.commitChan
+	logger.Println(commitInfo)
+	time.Sleep(time.Millisecond*time.Duration(500))
+	r1.Append([]byte("hi deependra"))
+	commitInfo = <- r1.commitChan
+	logger.Println(commitInfo)
+	err, bt := r1.Get(2)
+	fmt.Println("-----------------------", err, string(bt));
+	//time.Sleep(time.Millisecond*time.Duration(1000))
 	fmt.Println("sent")
 }
