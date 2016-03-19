@@ -8,6 +8,7 @@ import (
 	"time"
 )
 
+// Put some value and see if all the nodes writes on commit channel and also actually have in log
 func TestBasic(t *testing.T) {
 	rafts := makeRafts(t, 5, 7000) // array of []raftNode
 	ldr := getLeader(t, rafts)
@@ -31,13 +32,65 @@ func TestBasic(t *testing.T) {
 			}
 		}(node)
 	}
+	wg.Wait() //Waits for routines to finish
+	for _, node := range rafts {
+		node.Shutdown()
+		node.Delete() //Deletes created log/stateStore files
+	}
+}
+
+//Removing two nodes out of 5 to check if system commits the input
+func TestWithFewerAliveNodes(t *testing.T) {
+	n := 5
+	rafts := makeRafts(t, n, 6900) // array of []raftNode
+	ldr := getLeader(t, rafts)
+	var id1, id2 int
+
+	for i, node := range rafts {
+		if node.Id() == ldr.Id() {
+			id1 = rafts[(i+1)%5].Id()
+			id2 = rafts[(i+2)%5].Id()
+			rafts[(i+1)%5].Shutdown()
+			rafts[(i+1)%5].Delete()
+			rafts[(i+2)%5].Shutdown()
+			rafts[(i+2)%5].Delete()
+			break
+		}
+	}
+
+	ldr.Append([]byte("foo"))
+	var wg sync.WaitGroup
+	wg.Add(len(rafts) - 2)
+	for _, node := range rafts {
+		if node.Id() == id1 || node.Id() == id2 {
+			continue
+		}
+		go func(node RaftNode) {
+			defer wg.Done()
+			ci := <-node.CommitChannel()
+			if ci.err != "" {
+				t.Fatal(ci.err)
+			}
+			if string(ci.data) != "foo" {
+				t.Fatal("Got different data")
+			}
+			err, data := node.Get(1)
+			if err != nil || string(data) != "foo" {
+				t.Fatal("Expected message on log also")
+			}
+		}(node)
+	}
 	wg.Wait()
 	for _, node := range rafts {
+		if node.Id() == id1 || node.Id() == id2 {
+			continue
+		}
 		node.Shutdown()
 		node.Delete()
 	}
 }
 
+// Write something then shutdown the leader, new election should kick in and any new value should be able to get committed
 func TestNewLeader(t *testing.T) {
 	rafts := makeRafts(t, 5, 7100) // array of []raftNode
 	ldr := getLeader(t, rafts)
@@ -107,6 +160,8 @@ func TestNewLeader(t *testing.T) {
 	}
 }
 
+// Put some value into nodes, get it replicated on all nodes. Then crash all the nodes. Recreate all the nodes from
+// the log and stateStoreFile. First value is committed again. Also check if more values are getting replicated
 func TestRecovery(t *testing.T) {
 	rafts := makeRafts(t, 5, 7200) // array of []raftNode
 	ldr := getLeader(t, rafts)
