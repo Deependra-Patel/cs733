@@ -7,7 +7,12 @@ import (
 	"net"
 	"os"
 	"strconv"
+	"encoding/json"
 )
+
+var rNode RaftNode
+var clientMap map[int]*net.TCPConn
+var increasingClientId int
 
 var crlf = []byte{'\r', '\n'}
 
@@ -56,7 +61,7 @@ func reply(conn *net.TCPConn, msg *fs.Msg) bool {
 	return err == nil
 }
 
-func serve(conn *net.TCPConn) {
+func serve(conn *net.TCPConn, clientId int) {
 	reader := bufio.NewReader(conn)
 	for {
 		msg, msgerr, fatalerr := fs.GetMsg(reader)
@@ -65,35 +70,54 @@ func serve(conn *net.TCPConn) {
 			conn.Close()
 			break
 		}
+		msg.ClientId = clientId
+		data, err := json.Marshal(msg)
+		check(err)
+		rNode.Append(data)
+		//if msgerr != nil {
+		//	if (!reply(conn, &fs.Msg{Kind: 'M'})) {
+		//		conn.Close()
+		//		break
+		//	}
+		//}
+	}
+}
 
-		if msgerr != nil {
-			if (!reply(conn, &fs.Msg{Kind: 'M'})) {
+func commitHandler(){
+	for {
+		commitInfo := <-rNode.CommitChannel()
+		if commitInfo.err == "" {
+			binData := commitInfo.data
+			var msg fs.Msg
+			err := json.Unmarshal(binData, &msg)
+			check(err)
+			response := fs.ProcessMsg(&msg)
+			conn := clientMap[msg.ClientId]
+			if !reply(conn, response) {
 				conn.Close()
 				break
 			}
-		}
-
-		response := fs.ProcessMsg(msg)
-		if !reply(conn, response) {
-			conn.Close()
-			break
+		} else {
+			fmt.Println("Error received in commit message")
 		}
 	}
 }
 
-func serverMain() {
-	tcpaddr, err := net.ResolveTCPAddr("tcp", "localhost:8080")
+func serverMain(sConfig serverConfig) {
+	tcpaddr, err := net.ResolveTCPAddr("tcp", sConfig.host+":"+strconv.Itoa(sConfig.port))
 	check(err)
 	tcp_acceptor, err := net.ListenTCP("tcp", tcpaddr)
 	check(err)
-
+	increasingClientId = 1
+	rNode = New(sConfig.raftNodeConfig)
+	go commitHandler()
 	for {
 		tcp_conn, err := tcp_acceptor.AcceptTCP()
 		check(err)
-		go serve(tcp_conn)
+		go serve(tcp_conn, increasingClientId)
+		increasingClientId += 1
 	}
 }
 
 func main() {
-	serverMain()
 }
