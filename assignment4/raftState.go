@@ -85,6 +85,7 @@ func (sm *StateMachine) voteReq(voteReq VoteReqEv) []interface{} {
 	case "Candidate":
 		if sm.term < voteReq.Term {
 			sm.state = "Follower"
+			sm.leaderId = -1
 			sm.term = voteReq.Term
 			if voteReq.LastLogTerm > sm.log[len(sm.log)-1].Term ||
 				((voteReq.LastLogTerm == sm.log[len(sm.log)-1].Term) && voteReq.LastLogIndex >= (len(sm.log)-1)) {
@@ -111,6 +112,7 @@ func (sm *StateMachine) voteReq(voteReq VoteReqEv) []interface{} {
 				sm.log[sm.nextIndex[voteReq.CandidateId]:], sm.commitIndex}})
 		} else {
 			sm.state = "Follower"
+			sm.leaderId = -1
 			sm.term = voteReq.Term
 			if voteReq.LastLogTerm > sm.log[len(sm.log)-1].Term ||
 				((voteReq.LastLogTerm == sm.log[len(sm.log)-1].Term) && voteReq.LastLogIndex >= (len(sm.log)-1)) {
@@ -146,6 +148,7 @@ func (sm *StateMachine) voteResp(voteResp VoteRespEv) []interface{} {
 			sm.voteCount++
 			if sm.voteCount >= (len(sm.peers)+3)/2 {
 				sm.state = "Leader"
+				sm.leaderId = sm.id
 				//fmt.Println("LEADER ELECTED", sm.id)
 				for _, peer := range sm.peers {
 					sm.nextIndex[peer] = len(sm.log)
@@ -168,6 +171,7 @@ func (sm *StateMachine) timeout() []interface{} {
 	switch sm.state {
 	case "Follower":
 		sm.state = "Candidate"
+		sm.leaderId = -1
 		sm.term++
 		sm.votedFor = sm.id
 		sm.voteCount = 1
@@ -219,6 +223,7 @@ func (sm *StateMachine) appendEntriesReq(appendEntries AppendEntriesReqEv) []int
 						data: appendEntries.Entries[i].Data})
 					i += 1
 				}
+				sm.leaderId = appendEntries.LeaderId
 				resp = append(resp, Send{appendEntries.LeaderId,
 					AppendEntriesRespEv{From: sm.id, Term: sm.term, Success: true}})
 				if appendEntries.LeaderCommit > sm.commitIndex {
@@ -240,6 +245,7 @@ func (sm *StateMachine) appendEntriesReq(appendEntries AppendEntriesReqEv) []int
 				AppendEntriesRespEv{From: sm.id, Term: sm.term, Success: false}})
 		} else {
 			sm.state = "Follower"
+			sm.leaderId = -1
 			sm.term = appendEntries.Term
 			sm.votedFor = 0
 			resp = append(resp, StateStore{currentTerm: sm.term, votedFor: 0})
@@ -254,6 +260,7 @@ func (sm *StateMachine) appendEntriesReq(appendEntries AppendEntriesReqEv) []int
 						LogStore{index: index + i, term: sm.term, data: appendEntries.Entries[i].Data})
 					i += 1
 				}
+				sm.leaderId = appendEntries.LeaderId
 				resp = append(resp, Send{appendEntries.LeaderId,
 					AppendEntriesRespEv{From: sm.id, Term: sm.term, Success: true}})
 				if appendEntries.LeaderCommit > sm.commitIndex {
@@ -309,6 +316,7 @@ func (sm *StateMachine) appendEntriesResp(appendEntriesResp AppendEntriesRespEv)
 			}
 		} else {
 			sm.state = "Follower"
+			sm.leaderId = -1
 			sm.term = appendEntriesResp.Term
 			sm.votedFor = 0
 			resp = append(resp, StateStore{currentTerm: sm.term, votedFor: 0})
