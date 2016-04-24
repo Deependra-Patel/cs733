@@ -14,280 +14,251 @@ import (
 	"time"
 	"os/exec"
 	"os"
+	"sync"
 )
 
-//func TestRPCMain(t *testing.T) {
-//
-//	time.Sleep(1 * time.Second)
-//}
-
-
-func startServers(t *testing.T) []*exec.Cmd{
-	//serverConfigs := getServerConfigs(n, port)
-	//go serverMain(serverConfigs[0])
-	//go serverMain(serverConfigs[1])
-	//go serverMain(serverConfigs[2])
-	//go serverMain(serverConfigs[3])
-	//go serverMain(serverConfigs[4])
-	//
-	////for i:=0; i<n; i++{
-	////	go func(sConfig serverConfig) {
-	////		serverMain(sConfig)
-	////	}(serverConfigs[i])
-	////}
-	//time.Sleep(1000000000)
-	//time.Sleep(10000000000)
-	fs := make([]*exec.Cmd, 5)
+var fsp []*exec.Cmd
+var leaderUrl string
+func TestStartServers(t *testing.T) {
+	fsp = make([]*exec.Cmd, 5)
 	for i := 0 ; i < 5; i++ {
-		fs[i] = exec.Command("./assignment4", strconv.Itoa(i+1))
-		fs[i].Stdout = os.Stdout
-		fs[i].Stderr = os.Stdout
-		fs[i].Stdin = os.Stdin
-		fs[i].Start()
+		fsp[i] = exec.Command("./assignment4", strconv.Itoa(i+1))
+		fsp[i].Stdout = os.Stdout
+		fsp[i].Stderr = os.Stdout
+		fsp[i].Stdin = os.Stdin
+		fsp[i].Start()
 	}
-	time.Sleep(2*time.Second)
-	return fs
-	//return serverConfigs
+	time.Sleep(5*time.Second) //Waiting for leader election
 }
 
 func TestRPC_BasicSequential(t *testing.T) {
-	//_ = startServers(t)
-
-	//cl := mkClient(t, "localhost", 8000)
-	//data := "Cloud fun"
-	//m, err := cl.write("cs733net", data, 0)
-	//expect(t, m, &Msg{Kind: 'O'}, "write success", err)
-	//
-	//cl2 := mkClient(t, "localhost", 8001)
-	//data = "Cloud fun"
-	//m, err = cl2.write("cs733net", data, 0)
-	//expect(t, m, &Msg{Kind: 'O'}, "write success", err)
-	//
-	//cl3 := mkClient(t, "localhost", 8002)
-	//data = "Cloud fun"
-	//m, err = cl3.write("cs733net", data, 0)
-	//expect(t, m, &Msg{Kind: 'O'}, "write success", err)
-	//time.Sleep(2*time.Second)
-
-
-
-	// Read non-existent file cs733net
-	//m, err := cl.read("cs733net")
-	//expect(t, m, &Msg{Kind: 'F'}, "file not found", err)
-	//
-	//// Read non-existent file cs733net
-	//m, err = cl.delete("cs733net")
-	//expect(t, m, &Msg{Kind: 'F'}, "file not found", err)
+	leaderUrl = "localhost:8000"
+	leaderCl := mkClientUrl(t, leaderUrl)
+	m, err := leaderCl.read("cs733net")
+	fmt.Println(m)
+	if (m.Kind == 'F'){
+		fmt.Println("Is a leader")
+		expect(t, m, &Msg{Kind: 'F'}, "file not found", err)
+	} else if (m.Kind == 'R'){
+		leaderUrl = string(m.Contents)
+		fmt.Println("Not a leader, creating client for leader", string(m.Contents))
+		leaderCl = mkClientUrl(t, string(m.Contents))
+		m, err = leaderCl.read("cs733net")
+		fmt.Println(m, err)
+		expect(t, m, &Msg{Kind: 'F'}, "file not found", err)
+	} else {
+		t.Error("Unexpected response on write")
+	}
 
 	// Write file cs733net
-	//data := "Cloud fun"
-	//m, err := cl.write("cs733net", data, 0)
-	//expect(t, m, &Msg{Kind: 'O'}, "write success", err)
+	data := "Cloud fun"
+	m, err = leaderCl.write("cs733net", data, 0)
+	expect(t, m, &Msg{Kind: 'O'}, "write success", err)
 
-	//// Expect to read it back
-	//m, err = cl.read("cs733net")
-	//expect(t, m, &Msg{Kind: 'C', Contents: []byte(data)}, "read my write", err)
-	//
-	//// CAS in new value
-	//version1 := m.Version
-	//data2 := "Cloud fun 2"
-	//// Cas new value
-	//m, err = cl.cas("cs733net", version1, data2, 0)
-	//expect(t, m, &Msg{Kind: 'O'}, "cas success", err)
-	//
-	//// Expect to read it back
-	//m, err = cl.read("cs733net")
-	//expect(t, m, &Msg{Kind: 'C', Contents: []byte(data2)}, "read my cas", err)
-	//
-	//// Expect Cas to fail with old version
-	//m, err = cl.cas("cs733net", version1, data, 0)
-	//expect(t, m, &Msg{Kind: 'V'}, "cas version mismatch", err)
-	//
-	//// Expect a failed cas to not have succeeded. Read should return data2.
-	//m, err = cl.read("cs733net")
-	//expect(t, m, &Msg{Kind: 'C', Contents: []byte(data2)}, "failed cas to not have succeeded", err)
-	//
-	//// delete
-	//m, err = cl.delete("cs733net")
-	//expect(t, m, &Msg{Kind: 'O'}, "delete success", err)
-	//
-	//// Expect to not find the file
-	//m, err = cl.read("cs733net")
-	//expect(t, m, &Msg{Kind: 'F'}, "file not found", err)
+	// Expect to read it back
+	m, err = leaderCl.read("cs733net")
+	expect(t, m, &Msg{Kind: 'C', Contents: []byte(data)}, "read my write", err)
+
+	// CAS in new value
+	version1 := m.Version
+	data2 := "Cloud fun 2"
+	// Cas new value
+	m, err = leaderCl.cas("cs733net", version1, data2, 0)
+	expect(t, m, &Msg{Kind: 'O'}, "cas success", err)
+
+	// Expect to read it back
+	m, err = leaderCl.read("cs733net")
+	expect(t, m, &Msg{Kind: 'C', Contents: []byte(data2)}, "read my cas", err)
+
+	// Expect Cas to fail with old version
+	m, err = leaderCl.cas("cs733net", version1, data, 0)
+	expect(t, m, &Msg{Kind: 'V'}, "cas version mismatch", err)
+
+	// Expect a failed cas to not have succeeded. Read should return data2.
+	m, err = leaderCl.read("cs733net")
+	expect(t, m, &Msg{Kind: 'C', Contents: []byte(data2)}, "failed cas to not have succeeded", err)
+
+	// delete
+	m, err = leaderCl.delete("cs733net")
+	expect(t, m, &Msg{Kind: 'O'}, "delete success", err)
+
+	// Expect to not find the file
+	m, err = leaderCl.read("cs733net")
+	expect(t, m, &Msg{Kind: 'F'}, "file not found", err)
 }
 
-//func PTestRPC_Binary(t *testing.T) {
-//	cl := mkClient(t)
-//	defer cl.close()
+func TestRPC_Binary(t *testing.T) {
+	leaderCl := mkClientUrl(t, leaderUrl)
+	defer leaderCl.close()
+
+	// Write binary contents
+	data := "\x00\x01\r\n\x03" // some non-ascii, some crlf chars
+	m, err := leaderCl.write("binfile", data, 0)
+	expect(t, m, &Msg{Kind: 'O'}, "write success", err)
+
+	// Expect to read it back
+	m, err = leaderCl.read("binfile")
+	expect(t, m, &Msg{Kind: 'C', Contents: []byte(data)}, "read my write", err)
+
+}
+
+func TestRPC_Chunks(t *testing.T) {
+	// Should be able to accept a few bytes at a time
+	cl := mkClientUrl(t, leaderUrl)
+	defer cl.close()
+	var err error
+	snd := func(chunk string) {
+		if err == nil {
+			err = cl.send(chunk)
+		}
+	}
+
+	// Send the command "write teststream 10\r\nabcdefghij\r\n" in multiple chunks
+	// Nagle's algorithm is disabled on a write, so the server should get these in separate TCP packets.
+	snd("wr")
+	time.Sleep(10 * time.Millisecond)
+	snd("ite test")
+	time.Sleep(10 * time.Millisecond)
+	snd("stream 1")
+	time.Sleep(10 * time.Millisecond)
+	snd("0\r\nabcdefghij\r")
+	time.Sleep(10 * time.Millisecond)
+	snd("\n")
+	var m *Msg
+	m, err = cl.rcv()
+	expect(t, m, &Msg{Kind: 'O'}, "writing in chunks should work", err)
+}
 //
-//	// Write binary contents
-//	data := "\x00\x01\r\n\x03" // some non-ascii, some crlf chars
-//	m, err := cl.write("binfile", data, 0)
-//	expect(t, m, &Msg{Kind: 'O'}, "write success", err)
+func PTestRPC_Batch(t *testing.T) {
+	// Send multiple commands in one batch, expect multiple responses
+	cl := mkClientUrl(t, leaderUrl)
+	defer cl.close()
+	cmds := "write batch1 3\r\nabc\r\n" +
+		"write batch2 4\r\ndefg\r\n" +
+		"read batch1\r\n"
+
+	cl.send(cmds)
+	m, err := cl.rcv()
+	expect(t, m, &Msg{Kind: 'O'}, "write batch1 success", err)
+	m, err = cl.rcv()
+	expect(t, m, &Msg{Kind: 'O'}, "write batch2 success", err)
+	m, err = cl.rcv()
+	expect(t, m, &Msg{Kind: 'C', Contents: []byte("abc")}, "read batch1", err)
+}
 //
-//	// Expect to read it back
-//	m, err = cl.read("binfile")
-//	expect(t, m, &Msg{Kind: 'C', Contents: []byte(data)}, "read my write", err)
-//
-//}
-//
-//func PTestRPC_Chunks(t *testing.T) {
-//	// Should be able to accept a few bytes at a time
-//	cl := mkClient(t)
-//	defer cl.close()
-//	var err error
-//	snd := func(chunk string) {
-//		if err == nil {
-//			err = cl.send(chunk)
-//		}
-//	}
-//
-//	// Send the command "write teststream 10\r\nabcdefghij\r\n" in multiple chunks
-//	// Nagle's algorithm is disabled on a write, so the server should get these in separate TCP packets.
-//	snd("wr")
-//	time.Sleep(10 * time.Millisecond)
-//	snd("ite test")
-//	time.Sleep(10 * time.Millisecond)
-//	snd("stream 1")
-//	time.Sleep(10 * time.Millisecond)
-//	snd("0\r\nabcdefghij\r")
-//	time.Sleep(10 * time.Millisecond)
-//	snd("\n")
-//	var m *Msg
-//	m, err = cl.rcv()
-//	expect(t, m, &Msg{Kind: 'O'}, "writing in chunks should work", err)
-//}
-//
-//func PTestRPC_Batch(t *testing.T) {
-//	// Send multiple commands in one batch, expect multiple responses
-//	cl := mkClient(t)
-//	defer cl.close()
-//	cmds := "write batch1 3\r\nabc\r\n" +
-//		"write batch2 4\r\ndefg\r\n" +
-//		"read batch1\r\n"
-//
-//	cl.send(cmds)
-//	m, err := cl.rcv()
-//	expect(t, m, &Msg{Kind: 'O'}, "write batch1 success", err)
-//	m, err = cl.rcv()
-//	expect(t, m, &Msg{Kind: 'O'}, "write batch2 success", err)
-//	m, err = cl.rcv()
-//	expect(t, m, &Msg{Kind: 'C', Contents: []byte("abc")}, "read batch1", err)
-//}
-//
-//func PTestRPC_BasicTimer(t *testing.T) {
-//	cl := mkClient(t)
-//	defer cl.close()
-//
-//	// Write file cs733, with expiry time of 2 seconds
-//	str := "Cloud fun"
-//	m, err := cl.write("cs733", str, 2)
-//	expect(t, m, &Msg{Kind: 'O'}, "write success", err)
-//
-//	// Expect to read it back immediately.
-//	m, err = cl.read("cs733")
-//	expect(t, m, &Msg{Kind: 'C', Contents: []byte(str)}, "read my cas", err)
-//
-//	time.Sleep(3 * time.Second)
-//
-//	// Expect to not find the file after expiry
-//	m, err = cl.read("cs733")
-//	expect(t, m, &Msg{Kind: 'F'}, "file not found", err)
-//
-//	// Recreate the file with expiry time of 1 second
-//	m, err = cl.write("cs733", str, 1)
-//	expect(t, m, &Msg{Kind: 'O'}, "file recreated", err)
-//
-//	// Overwrite the file with expiry time of 4. This should be the new time.
-//	m, err = cl.write("cs733", str, 3)
-//	expect(t, m, &Msg{Kind: 'O'}, "file overwriten with exptime=4", err)
-//
-//	// The last expiry time was 3 seconds. We should expect the file to still be around 2 seconds later
-//	time.Sleep(2 * time.Second)
-//
-//	// Expect the file to not have expired.
-//	m, err = cl.read("cs733")
-//	expect(t, m, &Msg{Kind: 'C', Contents: []byte(str)}, "file to not expire until 4 sec", err)
-//
-//	time.Sleep(3 * time.Second)
-//	// 5 seconds since the last write. Expect the file to have expired
-//	m, err = cl.read("cs733")
-//	expect(t, m, &Msg{Kind: 'F'}, "file not found after 4 sec", err)
-//
-//	// Create the file with an expiry time of 1 sec. We're going to delete it
-//	// then immediately create it. The new file better not get deleted.
-//	m, err = cl.write("cs733", str, 1)
-//	expect(t, m, &Msg{Kind: 'O'}, "file created for delete", err)
-//
-//	m, err = cl.delete("cs733")
-//	expect(t, m, &Msg{Kind: 'O'}, "deleted ok", err)
-//
-//	m, err = cl.write("cs733", str, 0) // No expiry
-//	expect(t, m, &Msg{Kind: 'O'}, "file recreated", err)
-//
-//	time.Sleep(1100 * time.Millisecond) // A little more than 1 sec
-//	m, err = cl.read("cs733")
-//	expect(t, m, &Msg{Kind: 'C'}, "file should not be deleted", err)
-//
-//}
-//
-//
-//// nclients write to the same file. At the end the file should be
-//// any one clients' last write
-//
-//func PTestRPC_ConcurrentWrites(t *testing.T) {
-//	nclients := 500
-//	niters := 10
-//	clients := make([]*Client, nclients)
-//	for i := 0; i < nclients; i++ {
-//		cl := mkClient(t)
-//		if cl == nil {
-//			t.Fatalf("Unable to create client #%d", i)
-//		}
-//		defer cl.close()
-//		clients[i] = cl
-//	}
-//
-//	errCh := make(chan error, nclients)
-//	var sem sync.WaitGroup // Used as a semaphore to coordinate goroutines to begin concurrently
-//	sem.Add(1)
-//	ch := make(chan *Msg, nclients*niters) // channel for all replies
-//	for i := 0; i < nclients; i++ {
-//		go func(i int, cl *Client) {
-//			sem.Wait()
-//			for j := 0; j < niters; j++ {
-//				str := fmt.Sprintf("cl %d %d", i, j)
-//				m, err := cl.write("concWrite", str, 0)
-//				if err != nil {
-//					errCh <- err
-//					break
-//				} else {
-//					ch <- m
-//				}
-//			}
-//		}(i, clients[i])
-//	}
-//	time.Sleep(100 * time.Millisecond) // give goroutines a chance
-//	sem.Done()                         // Go!
-//
-//	// There should be no errors
-//	for i := 0; i < nclients*niters; i++ {
-//		select {
-//		case m := <-ch:
-//			if m.Kind != 'O' {
-//				t.Fatalf("Concurrent write failed with kind=%c", m.Kind)
-//			}
-//		case err := <- errCh:
-//			t.Fatal(err)
-//		}
-//	}
-//	m, _ := clients[0].read("concWrite")
-//	// Ensure the contents are of the form "cl <i> 9"
-//	// The last write of any client ends with " 9"
-//	if !(m.Kind == 'C' && strings.HasSuffix(string(m.Contents), " 9")) {
-//		t.Fatalf("Expected to be able to read after 1000 writes. Got msg = %v", m)
-//	}
-//}
+func PTestRPC_BasicTimer(t *testing.T) {
+	cl := mkClientUrl(t, leaderUrl)
+	defer cl.close()
+
+	// Write file cs733, with expiry time of 2 seconds
+	str := "Cloud fun"
+	m, err := cl.write("cs733", str, 2)
+	expect(t, m, &Msg{Kind: 'O'}, "write success", err)
+
+	// Expect to read it back immediately.
+	m, err = cl.read("cs733")
+	expect(t, m, &Msg{Kind: 'C', Contents: []byte(str)}, "read my cas", err)
+
+	time.Sleep(3 * time.Second)
+
+	// Expect to not find the file after expiry
+	m, err = cl.read("cs733")
+	expect(t, m, &Msg{Kind: 'F'}, "file not found", err)
+
+	// Recreate the file with expiry time of 1 second
+	m, err = cl.write("cs733", str, 2)
+	expect(t, m, &Msg{Kind: 'O'}, "file recreated", err)
+
+	// Overwrite the file with expiry time of 4. This should be the new time.
+	m, err = cl.write("cs733", str, 3)
+	expect(t, m, &Msg{Kind: 'O'}, "file overwriten with exptime=4", err)
+
+	// The last expiry time was 3 seconds. We should expect the file to still be around 2 seconds later
+	time.Sleep(1 * time.Second)
+
+	// Expect the file to not have expired.
+	//m, err = cl.read("cs733")
+	//expect(t, m, &Msg{Kind: 'C', Contents: []byte(str)}, "file to not expire until 4 sec", err)
+	//
+	//time.Sleep(3 * time.Second)
+	//// 5 seconds since the last write. Expect the file to have expired
+	//m, err = cl.read("cs733")
+	//expect(t, m, &Msg{Kind: 'F'}, "file not found after 4 sec", err)
+	//
+	//// Create the file with an expiry time of 1 sec. We're going to delete it
+	//// then immediately create it. The new file better not get deleted.
+	//m, err = cl.write("cs733", str, 1)
+	//expect(t, m, &Msg{Kind: 'O'}, "file created for delete", err)
+	//
+	//m, err = cl.delete("cs733")
+	//expect(t, m, &Msg{Kind: 'O'}, "deleted ok", err)
+	//
+	//m, err = cl.write("cs733", str, 0) // No expiry
+	//expect(t, m, &Msg{Kind: 'O'}, "file recreated", err)
+	//
+	//time.Sleep(1100 * time.Millisecond) // A little more than 1 sec
+	//m, err = cl.read("cs733")
+	//expect(t, m, &Msg{Kind: 'C'}, "file should not be deleted", err)
+
+}
+
+
+// nclients write to the same file. At the end the file should be
+// any one clients' last write
+
+func TestRPC_ConcurrentWrites(t *testing.T) {
+	nclients := 10
+	niters := 5
+	clients := make([]*Client, nclients)
+	for i := 0; i < nclients; i++ {
+		cl := mkClientUrl(t, leaderUrl)
+		if cl == nil {
+			t.Fatalf("Unable to create client #%d", i)
+		}
+		defer cl.close()
+		clients[i] = cl
+	}
+
+	errCh := make(chan error, nclients)
+	var sem sync.WaitGroup // Used as a semaphore to coordinate goroutines to begin concurrently
+	sem.Add(1)
+	ch := make(chan *Msg, nclients*niters) // channel for all replies
+	for i := 0; i < nclients; i++ {
+		go func(i int, cl *Client) {
+			sem.Wait()
+			for j := 0; j < niters; j++ {
+				str := fmt.Sprintf("cl %d %d", i, j)
+				m, err := cl.write("concWrite", str, 0)
+				if err != nil {
+					errCh <- err
+					break
+				} else {
+					ch <- m
+				}
+			}
+		}(i, clients[i])
+	}
+	time.Sleep(100 * time.Millisecond) // give goroutines a chance
+	sem.Done()                         // Go!
+
+	// There should be no errors
+	for i := 0; i < nclients*niters; i++ {
+		select {
+		case m := <-ch:
+			if m.Kind != 'O' {
+				t.Fatalf("Concurrent write failed with kind=%c", m.Kind)
+			}
+		case err := <- errCh:
+			t.Fatal(err)
+		}
+	}
+	m, _ := clients[0].read("concWrite")
+	// Ensure the contents are of the form "cl <i> 9"
+	// The last write of any client ends with " 9"
+	if !(m.Kind == 'C' && strings.HasSuffix(string(m.Contents), " 9")) {
+		t.Fatalf("Expected to be able to read after 1000 writes. Got msg = %v", m)
+	}
+}
 //
 //// nclients cas to the same file. At the end the file should be any one clients' last write.
 //// The only difference between this test and the ConcurrentWrite test above is that each
@@ -436,8 +407,12 @@ type Client struct {
 }
 
 func mkClient(t *testing.T, host string, port int) *Client {
+	return mkClientUrl(t, host+":"+strconv.Itoa(port))
+}
+
+func mkClientUrl(t *testing.T, url string) *Client {
 	var client *Client
-	raddr, err := net.ResolveTCPAddr("tcp", host+":"+strconv.Itoa(port))
+	raddr, err := net.ResolveTCPAddr("tcp", url)
 	if err == nil {
 		conn, err := net.DialTCP("tcp", nil, raddr)
 		if err == nil {
@@ -468,9 +443,7 @@ func (cl *Client) sendRcv(str string) (msg *Msg, err error) {
 		return nil, errNoConn
 	}
 	err = cl.send(str)
-	fmt.Println("up", err)
 	if err == nil {
-		fmt.Println("here")
 		msg, err = cl.rcv()
 	}
 	return msg, err
@@ -555,6 +528,7 @@ func parseFirst(line string) (msg *Msg, err error) {
 		msg.Kind = 'I'
 	case "ERR_REDIRECT":
 		msg.Kind = 'R'
+		msg.Contents = []byte(fields[1])
 	default:
 		err = errors.New("Unknown response " + fields[0])
 	}
