@@ -12,6 +12,8 @@ import (
 	//"sync"
 	"testing"
 	"time"
+	"os/exec"
+	"os"
 )
 
 //func TestRPCMain(t *testing.T) {
@@ -20,56 +22,54 @@ import (
 //}
 
 
-func getRaftConfigs(n int, port int) []Config {
-	netConfigs := make([]NetConfig, n)
-	for i := 0; i < n; i++ {
-		netConfigs[i] = NetConfig{Id: i + 1, Host: "localhost", Port: port + i}
+func startServers(t *testing.T) []*exec.Cmd{
+	//serverConfigs := getServerConfigs(n, port)
+	//go serverMain(serverConfigs[0])
+	//go serverMain(serverConfigs[1])
+	//go serverMain(serverConfigs[2])
+	//go serverMain(serverConfigs[3])
+	//go serverMain(serverConfigs[4])
+	//
+	////for i:=0; i<n; i++{
+	////	go func(sConfig serverConfig) {
+	////		serverMain(sConfig)
+	////	}(serverConfigs[i])
+	////}
+	//time.Sleep(1000000000)
+	//time.Sleep(10000000000)
+	fs := make([]*exec.Cmd, 5)
+	for i := 0 ; i < 5; i++ {
+		fs[i] = exec.Command("./assignment4", strconv.Itoa(i+1))
+		fs[i].Stdout = os.Stdout
+		fs[i].Stderr = os.Stdout
+		fs[i].Stdin = os.Stdin
+		fs[i].Start()
 	}
-
-	config := Config{
-		cluster:          netConfigs,
-		Id:               1,
-		LogDir:           "mylog",
-		ElectionTimeout:  time.Millisecond * time.Duration(1500),
-		HeartbeatTimeout: time.Millisecond * time.Duration(500),
-	}
-
-	configs := make([]Config, 0)
-	for i := 0; i < n; i++ {
-		temp := config
-		temp.Id = i + 1
-		temp.LogDir = temp.LogDir + strconv.Itoa(i+1)
-		configs = append(configs, temp)
-	}
-	return configs
-}
-
-func getServerConfigs(n int, port int) []serverConfig{
-	raftConfigs := getRaftConfigs(n, port+100)
-	serverConfigs := make([]serverConfig, n)
-	for i:=0; i<n; i++{
-		serverConfigs[i].id = i+1
-		serverConfigs[i].host = "localhost"
-		serverConfigs[i].port = port + i
-		serverConfigs[i].raftNodeConfig = raftConfigs[i]
-	}
-	return serverConfigs
-}
-
-func startServers(t *testing.T, n int, port int) []serverConfig{
-	serverConfigs := getServerConfigs(n, port)
-	for i:=0; i<n; i++{
-		go func(sConfig serverConfig) {
-			serverMain(sConfig)
-		}(serverConfigs[i])
-	}
-	return serverConfigs
+	time.Sleep(2*time.Second)
+	return fs
+	//return serverConfigs
 }
 
 func TestRPC_BasicSequential(t *testing.T) {
-	sConfigs := startServers(t, 5, 7000)
-	cl := mkClient(t, sConfigs[0].host, sConfigs[0].port)
-	defer cl.close()
+	//_ = startServers(t)
+
+	//cl := mkClient(t, "localhost", 8000)
+	//data := "Cloud fun"
+	//m, err := cl.write("cs733net", data, 0)
+	//expect(t, m, &Msg{Kind: 'O'}, "write success", err)
+	//
+	//cl2 := mkClient(t, "localhost", 8001)
+	//data = "Cloud fun"
+	//m, err = cl2.write("cs733net", data, 0)
+	//expect(t, m, &Msg{Kind: 'O'}, "write success", err)
+	//
+	//cl3 := mkClient(t, "localhost", 8002)
+	//data = "Cloud fun"
+	//m, err = cl3.write("cs733net", data, 0)
+	//expect(t, m, &Msg{Kind: 'O'}, "write success", err)
+	//time.Sleep(2*time.Second)
+
+
 
 	// Read non-existent file cs733net
 	//m, err := cl.read("cs733net")
@@ -80,7 +80,6 @@ func TestRPC_BasicSequential(t *testing.T) {
 	//expect(t, m, &Msg{Kind: 'F'}, "file not found", err)
 
 	// Write file cs733net
-	time.Sleep(10000)
 	//data := "Cloud fun"
 	//m, err := cl.write("cs733net", data, 0)
 	//expect(t, m, &Msg{Kind: 'O'}, "write success", err)
@@ -469,7 +468,9 @@ func (cl *Client) sendRcv(str string) (msg *Msg, err error) {
 		return nil, errNoConn
 	}
 	err = cl.send(str)
+	fmt.Println("up", err)
 	if err == nil {
+		fmt.Println("here")
 		msg, err = cl.rcv()
 	}
 	return msg, err
@@ -552,6 +553,8 @@ func parseFirst(line string) (msg *Msg, err error) {
 		msg.Kind = 'M'
 	case "ERR_INTERNAL":
 		msg.Kind = 'I'
+	case "ERR_REDIRECT":
+		msg.Kind = 'R'
 	default:
 		err = errors.New("Unknown response " + fields[0])
 	}
