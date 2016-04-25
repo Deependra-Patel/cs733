@@ -85,6 +85,7 @@ func TestRPC_BasicSequential(t *testing.T) {
 	// Expect to not find the file
 	m, err = leaderCl.read("cs733net")
 	expect(t, m, &Msg{Kind: 'F'}, "file not found", err)
+	time.Sleep(1*time.Second)
 }
 
 func TestRPC_Binary(t *testing.T) {
@@ -128,8 +129,8 @@ func TestRPC_Chunks(t *testing.T) {
 	m, err = cl.rcv()
 	expect(t, m, &Msg{Kind: 'O'}, "writing in chunks should work", err)
 }
-//
-func PTestRPC_Batch(t *testing.T) {
+
+func TestRPC_Batch(t *testing.T) {
 	// Send multiple commands in one batch, expect multiple responses
 	cl := mkClientUrl(t, leaderUrl)
 	defer cl.close()
@@ -144,8 +145,13 @@ func PTestRPC_Batch(t *testing.T) {
 	expect(t, m, &Msg{Kind: 'O'}, "write batch2 success", err)
 	m, err = cl.rcv()
 	expect(t, m, &Msg{Kind: 'C', Contents: []byte("abc")}, "read batch1", err)
+
+	for _, fs := range fsp{
+		fs.Process.Kill()
+	}
+	time.Sleep(1*time.Second)
 }
-//
+
 func PTestRPC_BasicTimer(t *testing.T) {
 	cl := mkClientUrl(t, leaderUrl)
 	defer cl.close()
@@ -177,37 +183,36 @@ func PTestRPC_BasicTimer(t *testing.T) {
 	time.Sleep(1 * time.Second)
 
 	// Expect the file to not have expired.
-	//m, err = cl.read("cs733")
-	//expect(t, m, &Msg{Kind: 'C', Contents: []byte(str)}, "file to not expire until 4 sec", err)
-	//
-	//time.Sleep(3 * time.Second)
-	//// 5 seconds since the last write. Expect the file to have expired
-	//m, err = cl.read("cs733")
-	//expect(t, m, &Msg{Kind: 'F'}, "file not found after 4 sec", err)
-	//
-	//// Create the file with an expiry time of 1 sec. We're going to delete it
-	//// then immediately create it. The new file better not get deleted.
-	//m, err = cl.write("cs733", str, 1)
-	//expect(t, m, &Msg{Kind: 'O'}, "file created for delete", err)
-	//
-	//m, err = cl.delete("cs733")
-	//expect(t, m, &Msg{Kind: 'O'}, "deleted ok", err)
-	//
-	//m, err = cl.write("cs733", str, 0) // No expiry
-	//expect(t, m, &Msg{Kind: 'O'}, "file recreated", err)
-	//
-	//time.Sleep(1100 * time.Millisecond) // A little more than 1 sec
-	//m, err = cl.read("cs733")
-	//expect(t, m, &Msg{Kind: 'C'}, "file should not be deleted", err)
+	m, err = cl.read("cs733")
+	expect(t, m, &Msg{Kind: 'C', Contents: []byte(str)}, "file to not expire until 4 sec", err)
 
+	time.Sleep(3 * time.Second)
+	// 5 seconds since the last write. Expect the file to have expired
+	m, err = cl.read("cs733")
+	expect(t, m, &Msg{Kind: 'F'}, "file not found after 4 sec", err)
+
+	// Create the file with an expiry time of 1 sec. We're going to delete it
+	// then immediately create it. The new file better not get deleted.
+	m, err = cl.write("cs733", str, 1)
+	expect(t, m, &Msg{Kind: 'O'}, "file created for delete", err)
+
+	m, err = cl.delete("cs733")
+	expect(t, m, &Msg{Kind: 'O'}, "deleted ok", err)
+
+	m, err = cl.write("cs733", str, 0) // No expiry
+	expect(t, m, &Msg{Kind: 'O'}, "file recreated", err)
+
+	time.Sleep(1100 * time.Millisecond) // A little more than 1 sec
+	m, err = cl.read("cs733")
+	expect(t, m, &Msg{Kind: 'C'}, "file should not be deleted", err)
 }
 
 
 // nclients write to the same file. At the end the file should be
 // any one clients' last write
 
-func TestRPC_ConcurrentWrites(t *testing.T) {
-	nclients := 10
+func PTestRPC_ConcurrentWrites(t *testing.T) {
+	nclients := 3
 	niters := 5
 	clients := make([]*Client, nclients)
 	for i := 0; i < nclients; i++ {
@@ -238,8 +243,9 @@ func TestRPC_ConcurrentWrites(t *testing.T) {
 			}
 		}(i, clients[i])
 	}
-	time.Sleep(100 * time.Millisecond) // give goroutines a chance
+	time.Sleep(3000 * time.Millisecond) // give goroutines a chance
 	sem.Done()                         // Go!
+	time.Sleep(12*time.Second)
 
 	// There should be no errors
 	for i := 0; i < nclients*niters; i++ {
@@ -255,79 +261,81 @@ func TestRPC_ConcurrentWrites(t *testing.T) {
 	m, _ := clients[0].read("concWrite")
 	// Ensure the contents are of the form "cl <i> 9"
 	// The last write of any client ends with " 9"
-	if !(m.Kind == 'C' && strings.HasSuffix(string(m.Contents), " 9")) {
+	if !(m.Kind == 'C' && strings.HasSuffix(string(m.Contents), " 4")) {
 		t.Fatalf("Expected to be able to read after 1000 writes. Got msg = %v", m)
 	}
 }
-//
-//// nclients cas to the same file. At the end the file should be any one clients' last write.
-//// The only difference between this test and the ConcurrentWrite test above is that each
-//// client loops around until each CAS succeeds. The number of concurrent clients has been
-//// reduced to keep the testing time within limits.
-//func PTestRPC_ConcurrentCas(t *testing.T) {
-//	nclients := 100
-//	niters := 10
-//
-//	clients := make([]*Client, nclients)
-//	for i := 0; i < nclients; i++ {
-//		cl := mkClient(t)
-//		if cl == nil {
-//			t.Fatalf("Unable to create client #%d", i)
-//		}
-//		defer cl.close()
-//		clients[i] = cl
-//	}
-//
-//	var sem sync.WaitGroup // Used as a semaphore to coordinate goroutines to *begin* concurrently
-//	sem.Add(1)
-//
-//	m, _ := clients[0].write("concCas", "first", 0)
-//	ver := m.Version
-//	if m.Kind != 'O' || ver == 0 {
-//		t.Fatalf("Expected write to succeed and return version")
-//	}
-//
-//	var wg sync.WaitGroup
-//	wg.Add(nclients)
-//
-//	errorCh := make(chan error, nclients)
-//
-//	for i := 0; i < nclients; i++ {
-//		go func(i int, ver int, cl *Client) {
-//			sem.Wait()
-//			defer wg.Done()
-//			for j := 0; j < niters; j++ {
-//				str := fmt.Sprintf("cl %d %d", i, j)
-//				for {
-//					m, err := cl.cas("concCas", ver, str, 0)
-//					if err != nil {
-//						errorCh <- err
-//						return
-//					} else if m.Kind == 'O' {
-//						break
-//					} else if m.Kind != 'V' {
-//						errorCh <- errors.New(fmt.Sprintf("Expected 'V' msg, got %c", m.Kind))
-//						return
-//					}
-//					ver = m.Version // retry with latest version
-//				}
-//			}
-//		}(i, ver, clients[i])
-//	}
-//
-//	time.Sleep(100 * time.Millisecond) // give goroutines a chance
-//	sem.Done()                         // Start goroutines
-//	wg.Wait()                          // Wait for them to finish
-//	select {
-//	case e := <- errorCh:
-//		t.Fatalf("Error received while doing cas: %v", e)
-//	default: // no errors
-//	}
-//	m, _ = clients[0].read("concCas")
-//	if !(m.Kind == 'C' && strings.HasSuffix(string(m.Contents), " 9")) {
-//		t.Fatalf("Expected to be able to read after 1000 writes. Got msg.Kind = %d, msg.Contents=%s", m.Kind, m.Contents)
-//	}
-//}
+
+// nclients cas to the same file. At the end the file should be any one clients' last write.
+// The only difference between this test and the ConcurrentWrite test above is that each
+// client loops around until each CAS succeeds. The number of concurrent clients has been
+// reduced to keep the testing time within limits.
+func PTestRPC_ConcurrentCas(t *testing.T) {
+	nclients := 3
+	niters := 5
+
+	clients := make([]*Client, nclients)
+	for i := 0; i < nclients; i++ {
+		cl := mkClientUrl(t, leaderUrl)
+		if cl == nil {
+			t.Fatalf("Unable to create client #%d", i)
+		}
+		defer cl.close()
+		clients[i] = cl
+	}
+
+	var sem sync.WaitGroup // Used as a semaphore to coordinate goroutines to *begin* concurrently
+	sem.Add(1)
+
+	m, _ := clients[0].write("concCas", "first", 0)
+	ver := m.Version
+	if m.Kind != 'O' || ver == 0 {
+		t.Fatalf("Expected write to succeed and return version")
+	}
+
+	var wg sync.WaitGroup
+	wg.Add(nclients)
+
+	errorCh := make(chan error, nclients)
+
+	for i := 0; i < nclients; i++ {
+		go func(i int, ver int, cl *Client) {
+			sem.Wait()
+			defer wg.Done()
+			for j := 0; j < niters; j++ {
+				str := fmt.Sprintf("cl %d %d", i, j)
+				for {
+					m, err := cl.cas("concCas", ver, str, 0)
+					if err != nil {
+						errorCh <- err
+						return
+					} else if m.Kind == 'O' {
+						break
+					} else if m.Kind != 'V' {
+						errorCh <- errors.New(fmt.Sprintf("Expected 'V' msg, got %c", m.Kind))
+						return
+					}
+					ver = m.Version // retry with latest version
+				}
+			}
+		}(i, ver, clients[i])
+	}
+
+	sem.Done()                         // Start goroutines
+	time.Sleep(1000 * time.Millisecond) // give goroutines a chance
+	wg.Wait()                          // Wait for them to finish
+	time.Sleep(15*time.Second)
+
+	select {
+	case e := <- errorCh:
+		t.Fatalf("Error received while doing cas: %v", e)
+	default: // no errors
+	}
+	m, _ = clients[0].read("concCas")
+	if !(m.Kind == 'C' && strings.HasSuffix(string(m.Contents), " 4")) {
+		t.Fatalf("Expected to be able to read after 1000 writes. Got msg.Kind = %d, msg.Contents=%s", m.Kind, m.Contents)
+	}
+}
 
 //----------------------------------------------------------------------
 // Utility functions

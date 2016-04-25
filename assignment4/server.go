@@ -92,6 +92,7 @@ func serve(conn *net.TCPConn, clientId int) {
 		msg.ClientId = clientId
 		data, err := json.Marshal(msg)
 		check(err)
+		//logger.Println("Received message: ", msg.Kind, string(msg.Contents))
 		lock.Lock()
 		clientMap[clientId] = conn
 		lock.Unlock()
@@ -107,7 +108,6 @@ func commitHandler(){
 		var msg fs.Msg
 		binData := commitInfo.data
 		err := json.Unmarshal(binData, &msg)
-		fmt.Println("message", msg)
 		check(err)
 		lock.Lock()
 		conn := clientMap[msg.ClientId]
@@ -116,6 +116,7 @@ func commitHandler(){
 		if commitInfo.err == "" {
 			response = fs.ProcessMsg(&msg)
 			if (conn != nil) {
+				//logger.Println("Message: ", string(msg.Kind), msg)
 				if !reply(conn, response) {
 					conn.Close()
 					break
