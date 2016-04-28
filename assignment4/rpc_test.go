@@ -19,36 +19,80 @@ import (
 
 var fsp []*exec.Cmd
 var leaderUrl string
+var num int
+var id_from_url map[string]int
 func TestStartServers(t *testing.T) {
-	fsp = make([]*exec.Cmd, 5)
-	for i := 0 ; i < 5; i++ {
+	num = 5
+	fsp = make([]*exec.Cmd, num)
+	id_from_url = make(map[string]int)
+	for i := 0 ; i < num; i++ {
 		fsp[i] = exec.Command("./assignment4", strconv.Itoa(i+1))
 		fsp[i].Stdout = os.Stdout
 		fsp[i].Stderr = os.Stdout
 		fsp[i].Stdin = os.Stdin
 		fsp[i].Start()
+		id_from_url["localhost:"+strconv.Itoa(8000+i)] = i+1
 	}
-	time.Sleep(5*time.Second) //Waiting for leader election
+	time.Sleep(2*time.Second)
+
+	for {
+		leaderUrl = "localhost:8000"
+		leaderCl := mkClientUrl(t, leaderUrl)
+		m, _ := leaderCl.read("cs733net")
+		fmt.Println("message: ", m)
+		content := string(m.Contents)
+		if (m.Kind == 'R'){
+			if (content != "-1"){
+				leaderUrl = content
+				break
+			}
+		} else if(m.Kind == 'F'){
+			break
+		}
+		time.Sleep(100*time.Millisecond)
+	}
 }
 
+func Test_Kill_Leader(t *testing.T){
+	leaderId := id_from_url[leaderUrl]
+	leaderCl := mkClientUrl(t, leaderUrl)
+	data := "Some data before kill"
+	m, err := leaderCl.write("killers.txt", data, 0)
+	expect(t, m, &Msg{Kind: 'O'}, "write success", err)
+	fmt.Println("LeaderId ", leaderId)
+	fsp[leaderId-1].Process.Kill()
+	time.Sleep(4*time.Second)
+	for {
+		leaderUrl = "localhost:"+strconv.Itoa(8000+leaderId%num)
+		leaderCl := mkClientUrl(t, leaderUrl)
+		m, err := leaderCl.read("killers.txt")
+		fmt.Println("message2: ", m)
+		content := string(m.Contents)
+		if (m.Kind == 'R'){
+			if (content != "-1"){
+				leaderUrl = content
+				leaderCl := mkClientUrl(t, leaderUrl)
+				m, err = leaderCl.read("killers.txt")
+				expect(t, m, &Msg{Kind: 'C'}, data, err)
+				break
+			}
+		} else if(m.Kind == 'C'){
+			expect(t, m, &Msg{Kind: 'C'}, data, err)
+			break
+		} else {
+			t.Error("Committed but not found on other nodes", m)
+		}
+		time.Sleep(100*time.Millisecond)
+	}
+}
+
+
 func TestRPC_BasicSequential(t *testing.T) {
-	leaderUrl = "localhost:8000"
+	fmt.Println("Leader Url ", leaderUrl)
 	leaderCl := mkClientUrl(t, leaderUrl)
 	m, err := leaderCl.read("cs733net")
-	fmt.Println(m)
-	if (m.Kind == 'F'){
-		fmt.Println("Is a leader")
-		expect(t, m, &Msg{Kind: 'F'}, "file not found", err)
-	} else if (m.Kind == 'R'){
-		leaderUrl = string(m.Contents)
-		fmt.Println("Not a leader, creating client for leader", string(m.Contents))
-		leaderCl = mkClientUrl(t, string(m.Contents))
-		m, err = leaderCl.read("cs733net")
-		fmt.Println(m, err)
-		expect(t, m, &Msg{Kind: 'F'}, "file not found", err)
-	} else {
-		t.Error("Unexpected response on write")
-	}
+	fmt.Println(m, err)
+	expect(t, m, &Msg{Kind: 'F'}, "file not found", err)
 
 	// Write file cs733net
 	data := "Cloud fun"
@@ -146,10 +190,6 @@ func TestRPC_Batch(t *testing.T) {
 	m, err = cl.rcv()
 	expect(t, m, &Msg{Kind: 'C', Contents: []byte("abc")}, "read batch1", err)
 
-	for _, fs := range fsp{
-		fs.Process.Kill()
-	}
-	time.Sleep(1*time.Second)
 }
 
 func PTestRPC_BasicTimer(t *testing.T) {
@@ -213,7 +253,7 @@ func PTestRPC_BasicTimer(t *testing.T) {
 
 func PTestRPC_ConcurrentWrites(t *testing.T) {
 	nclients := 3
-	niters := 5
+	niters := 3
 	clients := make([]*Client, nclients)
 	for i := 0; i < nclients; i++ {
 		cl := mkClientUrl(t, leaderUrl)
@@ -245,7 +285,7 @@ func PTestRPC_ConcurrentWrites(t *testing.T) {
 	}
 	time.Sleep(3000 * time.Millisecond) // give goroutines a chance
 	sem.Done()                         // Go!
-	time.Sleep(12*time.Second)
+	time.Sleep(10*time.Second)
 
 	// There should be no errors
 	for i := 0; i < nclients*niters; i++ {
@@ -261,7 +301,7 @@ func PTestRPC_ConcurrentWrites(t *testing.T) {
 	m, _ := clients[0].read("concWrite")
 	// Ensure the contents are of the form "cl <i> 9"
 	// The last write of any client ends with " 9"
-	if !(m.Kind == 'C' && strings.HasSuffix(string(m.Contents), " 4")) {
+	if !(m.Kind == 'C' && strings.HasSuffix(string(m.Contents), " 2")) {
 		t.Fatalf("Expected to be able to read after 1000 writes. Got msg = %v", m)
 	}
 }
@@ -272,7 +312,7 @@ func PTestRPC_ConcurrentWrites(t *testing.T) {
 // reduced to keep the testing time within limits.
 func PTestRPC_ConcurrentCas(t *testing.T) {
 	nclients := 3
-	niters := 5
+	niters := 3
 
 	clients := make([]*Client, nclients)
 	for i := 0; i < nclients; i++ {
@@ -324,7 +364,7 @@ func PTestRPC_ConcurrentCas(t *testing.T) {
 	sem.Done()                         // Start goroutines
 	time.Sleep(1000 * time.Millisecond) // give goroutines a chance
 	wg.Wait()                          // Wait for them to finish
-	time.Sleep(15*time.Second)
+	time.Sleep(10*time.Second)
 
 	select {
 	case e := <- errorCh:
@@ -332,10 +372,27 @@ func PTestRPC_ConcurrentCas(t *testing.T) {
 	default: // no errors
 	}
 	m, _ = clients[0].read("concCas")
-	if !(m.Kind == 'C' && strings.HasSuffix(string(m.Contents), " 4")) {
+	if !(m.Kind == 'C' && strings.HasSuffix(string(m.Contents), " 2")) {
 		t.Fatalf("Expected to be able to read after 1000 writes. Got msg.Kind = %d, msg.Contents=%s", m.Kind, m.Contents)
 	}
 }
+
+func Test_Kill_all(t *testing.T){
+	for _, fs := range fsp{
+		fs.Process.Kill()
+	}
+	time.Sleep(1*time.Second)
+}
+
+func Test_Clean(t *testing.T){
+	for i:=1; i<=num; i++{
+		str := strconv.Itoa(i)
+		err1 := os.RemoveAll("mylog" + str)
+		err2 := os.Remove("stateStoreFile" + str)
+		print(err1, err2)
+	}
+}
+
 
 //----------------------------------------------------------------------
 // Utility functions

@@ -182,7 +182,6 @@ func (rn *RaftNode) doActions(actions []interface{}) {
 		switch action.(type) {
 		case Alarm:
 			alarm := action.(Alarm)
-			logger.Printf("ID:%v Setting Alarm.. ", rn.Id(), alarm.t.Nanoseconds())
 			timerFunc := func(rn *RaftNode) func() {
 				return func() {
 					rn.timeoutChan <- TimeoutEv{}
@@ -190,6 +189,7 @@ func (rn *RaftNode) doActions(actions []interface{}) {
 			}(rn)
 			rn.timer.Stop()
 			rn.timer = time.AfterFunc(alarm.t, timerFunc)
+			logger.Printf("ID:%v Setting Alarm.. ", rn.Id(), alarm.t.Nanoseconds())
 
 		case LogStore:
 			logStore := action.(LogStore)
@@ -242,6 +242,9 @@ func (rn *RaftNode) processEvents() {
 	infiLoop:
 	for {
 		select {
+		case <-rn.timeoutChan:
+			logger.Printf("ID:%v Timeout\n", rn.Id())
+			rn.doActions(getActionsFromSM(rn, TimeoutEv{}))
 		case ev := <-rn.eventChan:
 			switch ev.(type) {
 			case shutdownEvent:
@@ -253,9 +256,6 @@ func (rn *RaftNode) processEvents() {
 		case inbox := <-rn.server.Inbox():
 			logger.Printf("ID:%v Inbox %+v\n", rn.Id(), inbox)
 			rn.doActions(getActionsFromSM(rn, inbox.Msg))
-		case <-rn.timeoutChan:
-			logger.Printf("ID:%v Timeout\n", rn.Id())
-			rn.doActions(getActionsFromSM(rn, TimeoutEv{}))
 		}
 	}
 }

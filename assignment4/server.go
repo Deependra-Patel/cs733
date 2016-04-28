@@ -78,7 +78,7 @@ func serve(conn *net.TCPConn, clientId int) {
 				logger.Println("Leader url: ", serverUrlMap[leaderId])
 				reply(conn, &fs.Msg{Kind: 'R', Contents: []byte(serverUrlMap[leaderId])})
 			} else {
-				reply(conn, &fs.Msg{Kind: 'R', Contents: []byte(serverUrlMap[rNode.Id()])})
+				reply(conn, &fs.Msg{Kind: 'R', Contents: []byte("-1")})
 			}
 			conn.Close()
 			break
