@@ -1,6 +1,5 @@
 package main
 
-
 import (
 	"bufio"
 	"bytes"
@@ -10,30 +9,31 @@ import (
 	"strconv"
 	"strings"
 	//"sync"
+	"os"
+	"os/exec"
+	"sync"
 	"testing"
 	"time"
-	"os/exec"
-	"os"
-	"sync"
 )
 
 var fsp []*exec.Cmd
 var leaderUrl string
 var num int
 var id_from_url map[string]int
+
 func TestStartServers(t *testing.T) {
 	num = 5
 	fsp = make([]*exec.Cmd, num)
 	id_from_url = make(map[string]int)
-	for i := 0 ; i < num; i++ {
+	for i := 0; i < num; i++ {
 		fsp[i] = exec.Command("./assignment4", strconv.Itoa(i+1))
 		fsp[i].Stdout = os.Stdout
 		fsp[i].Stderr = os.Stdout
 		fsp[i].Stdin = os.Stdin
 		fsp[i].Start()
-		id_from_url["localhost:"+strconv.Itoa(8000+i)] = i+1
+		id_from_url["localhost:"+strconv.Itoa(8000+i)] = i + 1
 	}
-	time.Sleep(2*time.Second)
+	time.Sleep(2 * time.Second)
 
 	for {
 		leaderUrl = "localhost:8000"
@@ -41,18 +41,17 @@ func TestStartServers(t *testing.T) {
 		m, _ := leaderCl.read("cs733net")
 		//fmt.Println("message: ", m)
 		content := string(m.Contents)
-		if (m.Kind == 'R'){
-			if (content != "-1"){
+		if m.Kind == 'R' {
+			if content != "-1" {
 				leaderUrl = content
 				break
 			}
-		} else if(m.Kind == 'F'){
+		} else if m.Kind == 'F' {
 			break
 		}
-		time.Sleep(100*time.Millisecond)
+		time.Sleep(100 * time.Millisecond)
 	}
 }
-
 
 func TestRPC_BasicSequential(t *testing.T) {
 	//fmt.Println("Leader Url ", leaderUrl)
@@ -96,7 +95,7 @@ func TestRPC_BasicSequential(t *testing.T) {
 	// Expect to not find the file
 	m, err = leaderCl.read("cs733net")
 	expect(t, m, &Msg{Kind: 'F'}, "file not found", err)
-	time.Sleep(1*time.Second)
+	time.Sleep(1 * time.Second)
 }
 
 func TestRPC_Binary(t *testing.T) {
@@ -146,8 +145,8 @@ func TestRPC_Batch(t *testing.T) {
 	cl := mkClientUrl(t, leaderUrl)
 	defer cl.close()
 	cmds := "write batch1 3\r\nabc\r\n" +
-	"write batch2 4\r\ndefg\r\n" +
-	"read batch1\r\n"
+		"write batch2 4\r\ndefg\r\n" +
+		"read batch1\r\n"
 
 	cl.send(cmds)
 	m, err := cl.rcv()
@@ -214,7 +213,6 @@ func PTestRPC_BasicTimer(t *testing.T) {
 	expect(t, m, &Msg{Kind: 'C'}, "file should not be deleted", err)
 }
 
-
 // nclients write to the same file. At the end the file should be
 // any one clients' last write
 
@@ -251,8 +249,8 @@ func PTestRPC_ConcurrentWrites(t *testing.T) {
 		}(i, clients[i])
 	}
 	time.Sleep(3000 * time.Millisecond) // give goroutines a chance
-	sem.Done()                         // Go!
-	time.Sleep(10*time.Second)
+	sem.Done()                          // Go!
+	time.Sleep(10 * time.Second)
 
 	// There should be no errors
 	for i := 0; i < nclients*niters; i++ {
@@ -261,7 +259,7 @@ func PTestRPC_ConcurrentWrites(t *testing.T) {
 			if m.Kind != 'O' {
 				t.Fatalf("Concurrent write failed with kind=%c", m.Kind)
 			}
-		case err := <- errCh:
+		case err := <-errCh:
 			t.Fatal(err)
 		}
 	}
@@ -328,13 +326,13 @@ func PTestRPC_ConcurrentCas(t *testing.T) {
 		}(i, ver, clients[i])
 	}
 
-	sem.Done()                         // Start goroutines
+	sem.Done()                          // Start goroutines
 	time.Sleep(1000 * time.Millisecond) // give goroutines a chance
-	wg.Wait()                          // Wait for them to finish
-	time.Sleep(10*time.Second)
+	wg.Wait()                           // Wait for them to finish
+	time.Sleep(10 * time.Second)
 
 	select {
-	case e := <- errorCh:
+	case e := <-errorCh:
 		t.Fatalf("Error received while doing cas: %v", e)
 	default: // no errors
 	}
@@ -344,26 +342,26 @@ func PTestRPC_ConcurrentCas(t *testing.T) {
 	}
 }
 
-func PTest_Kill_Leader_And_Revive(t *testing.T){
+func PTest_Kill_Leader_And_Revive(t *testing.T) {
 	leaderId := id_from_url[leaderUrl]
 	leaderCl := mkClientUrl(t, leaderUrl)
 	data := "Some data before kill"
 	m, err := leaderCl.write("killers.txt", data, 0)
 	expect(t, m, &Msg{Kind: 'O'}, "write success", err)
-	time.Sleep(2*time.Second)
+	time.Sleep(2 * time.Second)
 
 	fsp[leaderId-1].Process.Kill()
 	//fmt.Println("Killed: ", err, leaderId)
-	time.Sleep(4*time.Second) //for elections
+	time.Sleep(4 * time.Second) //for elections
 	for {
-		leaderUrl = "localhost:"+strconv.Itoa(8000+leaderId%num)
+		leaderUrl = "localhost:" + strconv.Itoa(8000+leaderId%num)
 		//fmt.Println(leaderUrl)
 		leaderCl := mkClientUrl(t, leaderUrl)
 		m, err := leaderCl.read("killers.txt")
 		//fmt.Println("message2: ", m)
 		content := string(m.Contents)
-		if (m.Kind == 'R'){
-			if (content != "-1"){
+		if m.Kind == 'R' {
+			if content != "-1" {
 				leaderUrl = content
 				//fmt.Println("pppp")
 				leaderCl := mkClientUrl(t, leaderUrl)
@@ -371,13 +369,13 @@ func PTest_Kill_Leader_And_Revive(t *testing.T){
 				expect(t, m, &Msg{Kind: 'C'}, data, err)
 				break
 			}
-		} else if(m.Kind == 'C'){
+		} else if m.Kind == 'C' {
 			expect(t, m, &Msg{Kind: 'C'}, data, err)
 			break
 		} else {
 			t.Error("Committed but not found on other nodes", m)
 		}
-		time.Sleep(100*time.Millisecond)
+		time.Sleep(100 * time.Millisecond)
 	}
 	//fmt.Println("ddddd")
 	new_leader_id := id_from_url[leaderUrl]
@@ -392,48 +390,45 @@ func PTest_Kill_Leader_And_Revive(t *testing.T){
 	fsp[leaderId-1].Stderr = os.Stdout
 	fsp[leaderId-1].Stdin = os.Stdin
 	fsp[leaderId-1].Start()
-	time.Sleep(1*time.Second)
+	time.Sleep(1 * time.Second)
 	for {
-		leaderUrl = "localhost:"+strconv.Itoa(8000+leaderId-1)
+		leaderUrl = "localhost:" + strconv.Itoa(8000+leaderId-1)
 		leaderCl := mkClientUrl(t, leaderUrl)
 		m, err := leaderCl.read("killers.txt")
 		//fmt.Println("message3: ", m)
 		content := string(m.Contents)
-		if (m.Kind == 'R'){
-			if (content != "-1"){
+		if m.Kind == 'R' {
+			if content != "-1" {
 				leaderUrl = content
 				leaderCl := mkClientUrl(t, leaderUrl)
 				m, err = leaderCl.read("killers.txt")
 				expect(t, m, &Msg{Kind: 'C'}, data2, err)
 				break
 			}
-		} else if(m.Kind == 'C'){
+		} else if m.Kind == 'C' {
 			t.Error("Leader elected although log might be incomplete", m)
 			break
 		} else {
 			t.Error("Committed but not found on other nodes", m)
 		}
-		time.Sleep(100*time.Millisecond)
+		time.Sleep(100 * time.Millisecond)
 	}
 }
 
-
-func Test_Kill_all(t *testing.T){
-	for _, fs := range fsp{
+func Test_Kill_all(t *testing.T) {
+	for _, fs := range fsp {
 		fs.Process.Kill()
 	}
-	time.Sleep(1*time.Second)
+	time.Sleep(1 * time.Second)
 }
 
-func Test_Clean(t *testing.T){
-	for i:=1; i<=num; i++{
+func Test_Clean(t *testing.T) {
+	for i := 1; i <= num; i++ {
 		str := strconv.Itoa(i)
 		err1 := os.RemoveAll("mylog" + str)
 		err2 := os.Remove("stateStoreFile" + str)
-		print(err1, err2)
 	}
 }
-
 
 //----------------------------------------------------------------------
 // Utility functions
@@ -452,7 +447,7 @@ func expect(t *testing.T, response *Msg, expected *Msg, errstr string, err error
 	}
 	if response.Kind == 'C' {
 		if expected.Contents != nil &&
-		bytes.Compare(response.Contents, expected.Contents) != 0 {
+			bytes.Compare(response.Contents, expected.Contents) != 0 {
 			ok = false
 		}
 	}
@@ -462,9 +457,9 @@ func expect(t *testing.T, response *Msg, expected *Msg, errstr string, err error
 }
 
 type Msg struct {
-		     // Kind = the first character of the command. For errors, it
-		     // is the first letter after "ERR_", ('V' for ERR_VERSION, for
-		     // example), except for "ERR_CMD_ERR", for which the kind is 'M'
+	// Kind = the first character of the command. For errors, it
+	// is the first letter after "ERR_", ('V' for ERR_VERSION, for
+	// example), except for "ERR_CMD_ERR", for which the kind is 'M'
 	Kind     byte
 	Filename string
 	Contents []byte
@@ -600,7 +595,7 @@ func parseFirst(line string) (msg *Msg, err error) {
 	toInt := func(fieldNum int) int {
 		var i int
 		if err == nil {
-			if fieldNum >=  len(fields) {
+			if fieldNum >= len(fields) {
 				err = errors.New(fmt.Sprintf("Not enough fields. Expected field #%d in %s\n", fieldNum, line))
 				return 0
 			}

@@ -111,7 +111,7 @@ func createServerConfig(netConfigs []NetConfig) cluster.Config {
 	peerConfigs := make([]cluster.PeerConfig, len(netConfigs))
 	for i, netConfig := range netConfigs {
 		peerConfigs[i] = cluster.PeerConfig{Id: netConfig.Id, Address: netConfig.Host +
-		":" + strconv.Itoa(netConfig.Port)}
+			":" + strconv.Itoa(netConfig.Port)}
 	}
 	return cluster.Config{
 		Peers: peerConfigs,
@@ -200,7 +200,7 @@ func (rn *RaftNode) doActions(actions []interface{}) {
 			stateStore := action.(StateStore)
 			//logger.Printf("ID:%v Storing current term, votedfor.. %+v\n", rn.Id(), stateStore)
 			err := ioutil.WriteFile(rn.stateStoreFile, []byte(strconv.Itoa(stateStore.currentTerm)+" "+
-			strconv.Itoa(stateStore.votedFor)), 0777)
+				strconv.Itoa(stateStore.votedFor)), 0777)
 			if err != nil {
 				logger.Panic("Can't write to stateStore file", err)
 			}
@@ -239,11 +239,11 @@ func getActionsFromSM(rn *RaftNode, event interface{}) []interface{} {
 }
 
 func (rn *RaftNode) processEvents() {
-	infiLoop:
+infiLoop:
 	for {
 		select {
 		case <-rn.timeoutChan:
-		//logger.Printf("ID:%v Timeout\n", rn.Id())
+			//logger.Printf("ID:%v Timeout\n", rn.Id())
 			rn.doActions(getActionsFromSM(rn, TimeoutEv{}))
 		case ev := <-rn.eventChan:
 			switch ev.(type) {
@@ -254,7 +254,7 @@ func (rn *RaftNode) processEvents() {
 				rn.doActions(getActionsFromSM(rn, ev))
 			}
 		case inbox := <-rn.server.Inbox():
-		//logger.Printf("ID:%v Inbox %+v\n", rn.Id(), inbox)
+			//logger.Printf("ID:%v Inbox %+v\n", rn.Id(), inbox)
 			rn.doActions(getActionsFromSM(rn, inbox.Msg))
 		}
 	}

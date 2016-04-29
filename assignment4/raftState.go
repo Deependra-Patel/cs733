@@ -293,14 +293,14 @@ func (sm *StateMachine) appendEntriesResp(appendEntriesResp AppendEntriesRespEv)
 				newIndex := min(len(sm.log)-1, sm.nextIndex[appendEntriesResp.From])
 				sm.matchIndex[appendEntriesResp.From] = sm.nextIndex[appendEntriesResp.From]
 				sm.nextIndex[appendEntriesResp.From] = len(sm.log)
-				if (newIndex > sm.commitIndex) {
+				if newIndex > sm.commitIndex {
 					count := 1
 					for _, peer := range sm.peers {
 						if sm.matchIndex[peer] >= newIndex {
 							count++
 						}
 					}
-					if count > (len(sm.peers) + 1) / 2 {
+					if count > (len(sm.peers)+1)/2 {
 						index := sm.commitIndex + 1
 						for index <= newIndex {
 							resp = append(resp, Commit{index: index, data: sm.log[index].Data, err: ""})
