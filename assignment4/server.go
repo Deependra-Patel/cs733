@@ -9,7 +9,7 @@ import (
 	"strconv"
 	"encoding/json"
 	"time"
-	logger "log"
+	//logger "log"
 	"sync"
 )
 
@@ -73,9 +73,9 @@ func serve(conn *net.TCPConn, clientId int) {
 	for {
 		if rNode.LeaderId() != rNode.Id(){
 			leaderId := rNode.LeaderId()
-			logger.Println("Redirecting client to leader: ", leaderId)
+			//logger.Println("Redirecting client to leader: ", leaderId)
 			if (leaderId != -1) {
-				logger.Println("Leader url: ", serverUrlMap[leaderId])
+				//logger.Println("Leader url: ", serverUrlMap[leaderId])
 				reply(conn, &fs.Msg{Kind: 'R', Contents: []byte(serverUrlMap[leaderId])})
 			} else {
 				reply(conn, &fs.Msg{Kind: 'R', Contents: []byte("-1")})
@@ -144,14 +144,13 @@ func serverMain(sConfig serverConfig) {
 	go rNode.processEvents()
 	go commitHandler()
 
-	fmt.Println("Started server: ", serverUrlMap[sConfig.id])
+	//fmt.Println("Started server: ", serverUrlMap[sConfig.id])
 	for {
 		tcp_conn, err := tcp_acceptor.AcceptTCP()
 		check(err)
 		go serve(tcp_conn, increasingClientId)
 		increasingClientId += 1
 	}
-	fmt.Println("Finished server")
 }
 
 

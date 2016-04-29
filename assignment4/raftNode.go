@@ -54,7 +54,7 @@ func New(config Config) RaftNode {
 	}
 	lg, err := log.Open(config.LogDir)
 	if err != nil {
-		logger.Println("Log can't be opened/created", err)
+		//logger.Println("Log can't be opened/created", err)
 	}
 	rn.lg = lg
 	rn.lg.RegisterSampleEntry(logEntry{})
@@ -72,7 +72,7 @@ func New(config Config) RaftNode {
 		err = rn.lg.Append(logEntry{Term: 0, Data: []byte("Dummy")})
 		rn.sm.log = append(rn.sm.log, logEntry{Term: 0, Data: []byte("Dummy")})
 		if err != nil {
-			logger.Println("Couldn't write to log", err)
+			//logger.Println("Couldn't write to log", err)
 		}
 	}
 
@@ -82,7 +82,7 @@ func New(config Config) RaftNode {
 	if err != nil {
 		logger.Panic("Couldn't start cluster server", err)
 	} else {
-		logger.Println("ID:"+strconv.Itoa(config.Id)+" Raft Server Started succesfully")
+		//logger.Println("ID:"+strconv.Itoa(config.Id)+" Raft Server Started succesfully")
 	}
 	gob.Register(AppendEntriesReqEv{})
 	gob.Register(AppendEntriesRespEv{})
@@ -103,7 +103,7 @@ func New(config Config) RaftNode {
 		}
 	}(&rn)
 	rn.timer = time.AfterFunc(rn.sm.ElectionTimeout, timerFunc)
-	logger.Println("Created new raft node")
+	//logger.Println("Created new raft node")
 	return rn
 }
 
@@ -119,7 +119,7 @@ func createServerConfig(netConfigs []NetConfig) cluster.Config {
 }
 
 func (rn *RaftNode) Append(b []byte) {
-	logger.Println("Append request received")
+	//logger.Println("Append request received")
 	rn.eventChan <- AppendEv{b}
 }
 
@@ -165,7 +165,7 @@ func (rn *RaftNode) Shutdown() {
 	rn.timer.Stop()
 	rn.lg.Close()
 	rn.server.Close()
-	logger.Println("Succesfully shutdown ID:", rn.Id())
+	//logger.Println("Succesfully shutdown ID:", rn.Id())
 }
 
 // Deletes log folder and the stateStore file
@@ -189,16 +189,16 @@ func (rn *RaftNode) doActions(actions []interface{}) {
 			}(rn)
 			rn.timer.Stop()
 			rn.timer = time.AfterFunc(alarm.t, timerFunc)
-			logger.Printf("ID:%v Setting Alarm.. ", rn.Id(), alarm.t.Nanoseconds())
+		//logger.Printf("ID:%v Setting Alarm.. ", rn.Id(), alarm.t.Nanoseconds())
 
 		case LogStore:
 			logStore := action.(LogStore)
-			logger.Printf("ID:%v Storing in Log %+v\n", rn.Id(), logStore)
+			//logger.Printf("ID:%v Storing in Log %+v\n", rn.Id(), logStore)
 			rn.lg.TruncateToEnd(int64(logStore.index))
 			rn.lg.Append(logEntry{Term: logStore.term, Data: logStore.data})
 		case StateStore:
 			stateStore := action.(StateStore)
-			logger.Printf("ID:%v Storing current term, votedfor.. %+v\n", rn.Id(), stateStore)
+			//logger.Printf("ID:%v Storing current term, votedfor.. %+v\n", rn.Id(), stateStore)
 			err := ioutil.WriteFile(rn.stateStoreFile, []byte(strconv.Itoa(stateStore.currentTerm)+" "+
 			strconv.Itoa(stateStore.votedFor)), 0777)
 			if err != nil {
@@ -206,7 +206,7 @@ func (rn *RaftNode) doActions(actions []interface{}) {
 			}
 		case Send:
 			send := action.(Send)
-			logger.Printf("ID:%v Sending.. %+v\n", rn.Id(), action)
+			//logger.Printf("ID:%v Sending.. %+v\n", rn.Id(), action)
 			switch send.event.(type) {
 			case VoteReqEv:
 				voteReq := send.event.(VoteReqEv)
@@ -223,7 +223,7 @@ func (rn *RaftNode) doActions(actions []interface{}) {
 			}
 		case Commit:
 			commit := action.(Commit)
-			logger.Printf("ID:%v Committing.. %+v", rn.Id(), commit)
+			//logger.Printf("ID:%v Committing.. %+v", rn.Id(), commit)
 			rn.commitChan <- CommitInfo{data: commit.data, err: commit.err, Index: commit.index}
 		default:
 			println("Unrecognized")
@@ -243,18 +243,18 @@ func (rn *RaftNode) processEvents() {
 	for {
 		select {
 		case <-rn.timeoutChan:
-			logger.Printf("ID:%v Timeout\n", rn.Id())
+		//logger.Printf("ID:%v Timeout\n", rn.Id())
 			rn.doActions(getActionsFromSM(rn, TimeoutEv{}))
 		case ev := <-rn.eventChan:
 			switch ev.(type) {
 			case shutdownEvent:
 				break infiLoop
 			default:
-				logger.Printf("ID:%v Append %+v\n", rn.Id(), ev)
+				//logger.Printf("ID:%v Append %+v\n", rn.Id(), ev)
 				rn.doActions(getActionsFromSM(rn, ev))
 			}
 		case inbox := <-rn.server.Inbox():
-			logger.Printf("ID:%v Inbox %+v\n", rn.Id(), inbox)
+		//logger.Printf("ID:%v Inbox %+v\n", rn.Id(), inbox)
 			rn.doActions(getActionsFromSM(rn, inbox.Msg))
 		}
 	}

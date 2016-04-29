@@ -39,7 +39,7 @@ func TestStartServers(t *testing.T) {
 		leaderUrl = "localhost:8000"
 		leaderCl := mkClientUrl(t, leaderUrl)
 		m, _ := leaderCl.read("cs733net")
-		fmt.Println("message: ", m)
+		//fmt.Println("message: ", m)
 		content := string(m.Contents)
 		if (m.Kind == 'R'){
 			if (content != "-1"){
@@ -53,45 +53,12 @@ func TestStartServers(t *testing.T) {
 	}
 }
 
-func Test_Kill_Leader(t *testing.T){
-	leaderId := id_from_url[leaderUrl]
-	leaderCl := mkClientUrl(t, leaderUrl)
-	data := "Some data before kill"
-	m, err := leaderCl.write("killers.txt", data, 0)
-	expect(t, m, &Msg{Kind: 'O'}, "write success", err)
-	fmt.Println("LeaderId ", leaderId)
-	fsp[leaderId-1].Process.Kill()
-	time.Sleep(4*time.Second)
-	for {
-		leaderUrl = "localhost:"+strconv.Itoa(8000+leaderId%num)
-		leaderCl := mkClientUrl(t, leaderUrl)
-		m, err := leaderCl.read("killers.txt")
-		fmt.Println("message2: ", m)
-		content := string(m.Contents)
-		if (m.Kind == 'R'){
-			if (content != "-1"){
-				leaderUrl = content
-				leaderCl := mkClientUrl(t, leaderUrl)
-				m, err = leaderCl.read("killers.txt")
-				expect(t, m, &Msg{Kind: 'C'}, data, err)
-				break
-			}
-		} else if(m.Kind == 'C'){
-			expect(t, m, &Msg{Kind: 'C'}, data, err)
-			break
-		} else {
-			t.Error("Committed but not found on other nodes", m)
-		}
-		time.Sleep(100*time.Millisecond)
-	}
-}
-
 
 func TestRPC_BasicSequential(t *testing.T) {
-	fmt.Println("Leader Url ", leaderUrl)
+	//fmt.Println("Leader Url ", leaderUrl)
 	leaderCl := mkClientUrl(t, leaderUrl)
 	m, err := leaderCl.read("cs733net")
-	fmt.Println(m, err)
+	//fmt.Println(m, err)
 	expect(t, m, &Msg{Kind: 'F'}, "file not found", err)
 
 	// Write file cs733net
@@ -179,8 +146,8 @@ func TestRPC_Batch(t *testing.T) {
 	cl := mkClientUrl(t, leaderUrl)
 	defer cl.close()
 	cmds := "write batch1 3\r\nabc\r\n" +
-		"write batch2 4\r\ndefg\r\n" +
-		"read batch1\r\n"
+	"write batch2 4\r\ndefg\r\n" +
+	"read batch1\r\n"
 
 	cl.send(cmds)
 	m, err := cl.rcv()
@@ -377,6 +344,80 @@ func PTestRPC_ConcurrentCas(t *testing.T) {
 	}
 }
 
+func PTest_Kill_Leader_And_Revive(t *testing.T){
+	leaderId := id_from_url[leaderUrl]
+	leaderCl := mkClientUrl(t, leaderUrl)
+	data := "Some data before kill"
+	m, err := leaderCl.write("killers.txt", data, 0)
+	expect(t, m, &Msg{Kind: 'O'}, "write success", err)
+	time.Sleep(2*time.Second)
+
+	fsp[leaderId-1].Process.Kill()
+	//fmt.Println("Killed: ", err, leaderId)
+	time.Sleep(4*time.Second) //for elections
+	for {
+		leaderUrl = "localhost:"+strconv.Itoa(8000+leaderId%num)
+		//fmt.Println(leaderUrl)
+		leaderCl := mkClientUrl(t, leaderUrl)
+		m, err := leaderCl.read("killers.txt")
+		//fmt.Println("message2: ", m)
+		content := string(m.Contents)
+		if (m.Kind == 'R'){
+			if (content != "-1"){
+				leaderUrl = content
+				//fmt.Println("pppp")
+				leaderCl := mkClientUrl(t, leaderUrl)
+				m, err = leaderCl.read("killers.txt")
+				expect(t, m, &Msg{Kind: 'C'}, data, err)
+				break
+			}
+		} else if(m.Kind == 'C'){
+			expect(t, m, &Msg{Kind: 'C'}, data, err)
+			break
+		} else {
+			t.Error("Committed but not found on other nodes", m)
+		}
+		time.Sleep(100*time.Millisecond)
+	}
+	//fmt.Println("ddddd")
+	new_leader_id := id_from_url[leaderUrl]
+	data2 := "new data for file"
+	leaderCl = mkClientUrl(t, leaderUrl)
+	leaderCl.write("killers.txt", data2, 0)
+	expect(t, m, &Msg{Kind: 'O'}, "write success", err)
+
+	fsp[new_leader_id-1].Process.Kill()
+	fsp[leaderId-1] = exec.Command("./assignment4", strconv.Itoa(leaderId))
+	fsp[leaderId-1].Stdout = os.Stdout
+	fsp[leaderId-1].Stderr = os.Stdout
+	fsp[leaderId-1].Stdin = os.Stdin
+	fsp[leaderId-1].Start()
+	time.Sleep(1*time.Second)
+	for {
+		leaderUrl = "localhost:"+strconv.Itoa(8000+leaderId-1)
+		leaderCl := mkClientUrl(t, leaderUrl)
+		m, err := leaderCl.read("killers.txt")
+		//fmt.Println("message3: ", m)
+		content := string(m.Contents)
+		if (m.Kind == 'R'){
+			if (content != "-1"){
+				leaderUrl = content
+				leaderCl := mkClientUrl(t, leaderUrl)
+				m, err = leaderCl.read("killers.txt")
+				expect(t, m, &Msg{Kind: 'C'}, data2, err)
+				break
+			}
+		} else if(m.Kind == 'C'){
+			t.Error("Leader elected although log might be incomplete", m)
+			break
+		} else {
+			t.Error("Committed but not found on other nodes", m)
+		}
+		time.Sleep(100*time.Millisecond)
+	}
+}
+
+
 func Test_Kill_all(t *testing.T){
 	for _, fs := range fsp{
 		fs.Process.Kill()
@@ -421,9 +462,9 @@ func expect(t *testing.T, response *Msg, expected *Msg, errstr string, err error
 }
 
 type Msg struct {
-	// Kind = the first character of the command. For errors, it
-	// is the first letter after "ERR_", ('V' for ERR_VERSION, for
-	// example), except for "ERR_CMD_ERR", for which the kind is 'M'
+		     // Kind = the first character of the command. For errors, it
+		     // is the first letter after "ERR_", ('V' for ERR_VERSION, for
+		     // example), except for "ERR_CMD_ERR", for which the kind is 'M'
 	Kind     byte
 	Filename string
 	Contents []byte
