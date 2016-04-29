@@ -425,8 +425,8 @@ func Test_Kill_all(t *testing.T) {
 func Test_Clean(t *testing.T) {
 	for i := 1; i <= num; i++ {
 		str := strconv.Itoa(i)
-		err1 := os.RemoveAll("mylog" + str)
-		err2 := os.Remove("stateStoreFile" + str)
+		os.RemoveAll("mylog" + str)
+		os.Remove("stateStoreFile" + str)
 	}
 }
 
