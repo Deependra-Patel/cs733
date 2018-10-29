@@ -1,7 +1,7 @@
 # cs733
-##Assignment 1
+## Assignment 1
 File Server in go <br>
-###Commands :
+### Commands :
 1. Write: create a file, or update the file’s contents if it already exists.<br>
 Usage : 
 write \<filename\> \<numbytes\> [\<exptime\>]\r\n\<content bytes\>\r\n<br>
@@ -24,7 +24,7 @@ Usage: delete \<filename\>\r\n<br>
 Response: 
 OK\r\n
 
-###Errors :
+### Errors :
 1. ERR_VERSION\r\n (the contents were not updated because of a version
 mismatch)
 2. ERR_FILE_NOT_FOUND\r\n (the filename doesn’t exist)
@@ -32,6 +32,6 @@ mismatch)
 4. ERR_INTERNAL\r\n (any other error you wish to report that is not covered by the
 rest)
 
-###Bugs :
+### Bugs :
 1. If the power fails, then all the data is lost
 
